@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Approve esbuild native binary installation (required by tsx/turbo)
+allowBuilds:
+  esbuild: true

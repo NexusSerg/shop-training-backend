@@ -1,0 +1,26 @@
+{
+  "name": "@shop/indexing-worker",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@shop/shared-types": "workspace:*",
+    "@shop/shared-utils": "workspace:*",
+    "pino": "^9.0.0"
+  },
+  "devDependencies": {
+    "@shop/eslint-config": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "tsx": "^4.15.0",
+    "vitest": "^2.0.0"
+  }
+}
