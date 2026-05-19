@@ -75,7 +75,7 @@ Each service restarts automatically on file changes.
 | Service | Port | Package |
 |---------|------|---------|
 | API Gateway | 3000 | _(Step 1.5)_ |
-| Search Service | 3001 | `apps/search-service` |
+| Search Service | 3001 | `apps/search-service` ✅ Step 1.2 |
 | Catalog Service | 3002 | `apps/catalog-service` ✅ Step 1.1 |
 | Pricing Service | 3003 | `apps/pricing-service` |
 | Autocomplete Service | 3004 | `apps/autocomplete-service` |
@@ -208,4 +208,89 @@ curl -X POST http://localhost:3002/api/v1/products \
 ```
 
 > **Note:** The in-memory store resets on restart. PostgreSQL integration is planned for Step 3.1.
+
+---
+
+## Search Service (Step 1.2 — Mock-First)
+
+The search service runs on **port 3001** and uses an in-memory store seeded with **100 deterministic fake `ProductSummary` objects** (faker seed 42 — IDs are stable across restarts).
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/api/v1/search` | Search products with filtering, sorting, and pagination |
+| `GET` | `/api/v1/search/facets` | Facet aggregations for a text query (no other filters) |
+
+### Query Parameters — `GET /api/v1/search`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | `string` | — | Full-text search (name, brand, SKU, category) |
+| `brands` | `string` | — | Comma-separated brand names (e.g. `Apple,Dell`) |
+| `price_min` | `number` | — | Minimum price (inclusive) |
+| `price_max` | `number` | — | Maximum price (inclusive) |
+| `rating` | `1–5` | — | Minimum average rating |
+| `category` | `string` | — | Slash-separated category path (e.g. `Electronics/Laptops`) |
+| `in_stock` | `true\|false` | — | Restrict to in-stock products |
+| `sort` | `string` | `relevance` | `relevance`, `price_asc`, `price_desc`, `rating`, `newest`, `popularity` |
+| `page` | `integer` | `1` | Page number |
+| `per_page` | `24\|48\|96` | `24` | Results per page |
+| `attr_<key>` | `string` | — | Attribute filter (e.g. `attr_color=Black,Silver`) |
+
+### Response Shape
+
+```json
+{
+  "products": [ /* ProductSummary[] */ ],
+  "facets": {
+    "brands":     [{ "value": "Apple", "count": 7, "selected": false }],
+    "priceRange": { "min": 12.5, "max": 1899, "selectedMin": 12.5, "selectedMax": 1899 },
+    "ratings":    [{ "value": "4", "count": 31, "selected": false }],
+    "categories": [{ "value": "Electronics", "count": 22, "selected": false }],
+    "attributes": { "color": [{ "value": "Black", "count": 15, "selected": false }] }
+  },
+  "pagination": {
+    "total": 100, "page": 1, "perPage": 24,
+    "totalPages": 5, "hasNextPage": true, "hasPrevPage": false
+  },
+  "took": 2,
+  "query": "laptop"
+}
+```
+
+### Swagger UI
+
+Browse the interactive API docs at **http://localhost:3001/docs** while the service is running.
+
+### Quick test
+
+```bash
+# Start the service
+pnpm --filter @shop/search-service dev
+
+# Basic search (returns first page of 24)
+curl http://localhost:3001/api/v1/search | jq '.pagination'
+
+# Full-text search
+curl "http://localhost:3001/api/v1/search?q=laptop" | jq '.pagination.total'
+
+# Filter by brand + price range
+curl "http://localhost:3001/api/v1/search?brands=Apple,Dell&price_min=100&price_max=1500" | jq '.products | length'
+
+# Filter by category, sort by rating, page 2
+curl "http://localhost:3001/api/v1/search?category=Electronics&sort=rating&page=2&per_page=24" | jq '.'
+
+# In-stock products with 4+ stars
+curl "http://localhost:3001/api/v1/search?rating=4&in_stock=true" | jq '.pagination.total'
+
+# Dynamic attribute filter
+curl "http://localhost:3001/api/v1/search?attr_color=Black,Silver" | jq '.products | length'
+
+# Facets endpoint
+curl "http://localhost:3001/api/v1/search/facets?q=phone" | jq '.facets.brands'
+```
+
+> **Note:** The in-memory store resets on restart. Elasticsearch integration is planned for Step 3.3.
 
