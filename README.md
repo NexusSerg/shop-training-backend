@@ -6,9 +6,12 @@ E-commerce product catalog backend — pnpm monorepo with Turborepo.
 
 | Tool | Version |
 |------|---------|
-| Node.js | ≥ 20 |
-| pnpm | ≥ 9 (install: `npm i -g pnpm` or via [pnpm.io](https://pnpm.io/installation)) |
+| Node.js | **≥ 20.0.0** (LTS recommended: 22.x) |
+| pnpm | **≥ 9.0.0** (project uses 11.x — install via `npm i -g pnpm@11` or [pnpm.io](https://pnpm.io/installation)) |
 | Docker + Docker Compose | any recent version |
+
+> **Node.js version** is enforced in `package.json` (`"engines": { "node": ">=20.0.0" }`).  
+> Verify with `node --version`. Use [nvm](https://github.com/nvm-sh/nvm) or [Volta](https://volta.sh/) to manage multiple Node versions.
 
 ---
 
@@ -73,7 +76,7 @@ Each service restarts automatically on file changes.
 |---------|------|---------|
 | API Gateway | 3000 | _(Step 1.5)_ |
 | Search Service | 3001 | `apps/search-service` |
-| Catalog Service | 3002 | `apps/catalog-service` |
+| Catalog Service | 3002 | `apps/catalog-service` ✅ Step 1.1 |
 | Pricing Service | 3003 | `apps/pricing-service` |
 | Autocomplete Service | 3004 | `apps/autocomplete-service` |
 | Saved Search Service | 3005 | `apps/saved-search-service` |
@@ -164,4 +167,45 @@ curl http://localhost:3005/health  # saved-search-service
 ```
 
 Expected response: `{"status":"ok","service":"<name>"}`
+
+---
+
+## Catalog Service (Step 1.1 — Mock-First)
+
+The catalog service runs on **port 3002** and uses an in-memory store seeded with **100 deterministic fake products** (via `@faker-js/faker` with a fixed seed, so IDs are stable across restarts).
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/api/v1/products` | List all products (or bulk-fetch with `?ids=id1,id2`) |
+| `GET` | `/api/v1/products/:id` | Get single product by ID |
+| `POST` | `/api/v1/products` | Create a product _(admin)_ |
+| `PATCH` | `/api/v1/products/:id` | Update product fields _(admin)_ |
+| `GET` | `/api/v1/categories` | Get full category tree with product counts |
+
+### Swagger UI
+
+Browse the interactive API docs at **http://localhost:3002/docs** while the service is running.
+
+### Quick test
+
+```bash
+# Start the service
+pnpm --filter @shop/catalog-service dev
+
+# Fetch all seeded products
+curl http://localhost:3002/api/v1/products | jq '.count'
+
+# Fetch a product by ID (grab an ID from the list above)
+curl http://localhost:3002/api/v1/products/<id>
+
+# Create a new product
+curl -X POST http://localhost:3002/api/v1/products \
+  -H 'Content-Type: application/json' \
+  -d '{"sku":"MY-SKU","name":"My Product","brand":"Acme","categoryId":"cat-laptops"}'
+```
+
+> **Note:** The in-memory store resets on restart. PostgreSQL integration is planned for Step 3.1.
 
