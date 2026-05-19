@@ -26,7 +26,9 @@ pnpm install
 docker compose -f infra/docker-compose.yml up -d
 ```
 
-Wait for all services to be healthy (~30 s):
+> **Apple Silicon (M1/M2/M3):** Elasticsearch and Kibana are pinned to `platform: linux/amd64` in `docker-compose.yml`. Docker Desktop uses Rosetta 2 to emulate x86 — this is intentional and fixes a JVM `SIGILL` crash that occurs when running the ES image natively on ARM.
+
+Wait for all services to be healthy (~60 s on first pull):
 
 ```bash
 docker compose -f infra/docker-compose.yml ps
