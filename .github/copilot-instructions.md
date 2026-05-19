@@ -902,6 +902,4 @@ Key Principles for Agent Execution
 Each step is a PR: Small, reviewable, independently deployable
 Tests at every step: Unit tests for logic, integration tests for endpoints, E2E for flows
 Stub before integrate: Get the contract right before connecting real systems
-Feature flags: Wrap risky changes; rollback without deploy
-Observable from day 1: Every endpoint logged, every action measured
-Document as you go: README per service, OpenAPI auto-generated, ADRs for decisions
+Update readme.md each phase if it's a significant changes
