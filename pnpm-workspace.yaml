@@ -4,4 +4,6 @@ packages:
 
 # Approve esbuild native binary installation (required by tsx/turbo)
 allowBuilds:
+  '@nestjs/core': true
+  '@swc/core': true
   esbuild: true

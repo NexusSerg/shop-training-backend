@@ -1,5 +1,5 @@
 import type { Suggestion } from '@shop/shared-types';
-import { STATIC_SUGGESTIONS } from './suggestions.js';
+import { STATIC_SUGGESTIONS } from './suggestions';
 
 const TYPE_PRIORITY: Record<Suggestion['type'], number> = {
   product: 4,

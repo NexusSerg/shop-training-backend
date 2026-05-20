@@ -7,7 +7,7 @@ import type {
   PriceRangeFacet,
   PaginationMeta,
 } from '@shop/shared-types';
-import { seedProductSummaries } from './seed.js';
+import { seedProductSummaries } from './seed';
 
 // ---------------------------------------------------------------------------
 // Types

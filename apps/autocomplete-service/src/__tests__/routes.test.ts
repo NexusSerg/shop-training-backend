@@ -1,40 +1,42 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import type { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
 import type { AutocompleteResponse } from '@shop/shared-types';
-import { createServer } from '../server.js';
-import { AutocompleteStore } from '../mock/store.js';
+import { AppModule } from '../app.module';
+import { AutocompleteStore } from '../mock/store';
+import { setupSwagger } from '../swagger';
 
 describe('Autocomplete Service routes', () => {
-  let server: FastifyInstance;
+  let app: INestApplication;
 
   beforeAll(async () => {
-    server = createServer();
-    await server.ready();
+    const module = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = module.createNestApplication();
+    setupSwagger(app);
+    await app.init();
   });
 
   afterAll(async () => {
-    await server.close();
+    await app.close();
   });
 
-  // ---------------------------------------------------------------------------
   // Health
-  // ---------------------------------------------------------------------------
 
   it('GET /health → 200 with service name', async () => {
-    const res = await server.inject({ method: 'GET', url: '/health' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ status: 'ok', service: 'autocomplete-service' });
+    const res = await request(app.getHttpServer()).get('/health').expect(200);
+    expect(res.body).toMatchObject({ status: 'ok', service: 'autocomplete-service' });
   });
 
-  // ---------------------------------------------------------------------------
   // GET /api/v1/autocomplete
-  // ---------------------------------------------------------------------------
 
   it('GET /api/v1/autocomplete?q=lap → returns suggestions starting with "lap"', async () => {
-    const res = await server.inject({ method: 'GET', url: '/api/v1/autocomplete?q=lap' });
-    expect(res.statusCode).toBe(200);
+    const res = await request(app.getHttpServer()).get('/api/v1/autocomplete?q=lap').expect(200);
 
-    const body = res.json<AutocompleteResponse>();
+    const body = res.body as AutocompleteResponse;
     expect(body.suggestions.length).toBeGreaterThan(0);
     expect(body.suggestions.length).toBeLessThanOrEqual(10);
     for (const s of body.suggestions) {
@@ -43,10 +45,9 @@ describe('Autocomplete Service routes', () => {
   });
 
   it('GET /api/v1/autocomplete?q=Apple → returns Apple brand and product suggestions', async () => {
-    const res = await server.inject({ method: 'GET', url: '/api/v1/autocomplete?q=Apple' });
-    expect(res.statusCode).toBe(200);
+    const res = await request(app.getHttpServer()).get('/api/v1/autocomplete?q=Apple').expect(200);
 
-    const body = res.json<AutocompleteResponse>();
+    const body = res.body as AutocompleteResponse;
     expect(body.suggestions.length).toBeGreaterThan(0);
     for (const s of body.suggestions) {
       expect(s.text.toLowerCase()).toMatch(/^apple/);
@@ -54,84 +55,79 @@ describe('Autocomplete Service routes', () => {
   });
 
   it('GET /api/v1/autocomplete (no query) → returns top suggestions', async () => {
-    const res = await server.inject({ method: 'GET', url: '/api/v1/autocomplete' });
-    expect(res.statusCode).toBe(200);
+    const res = await request(app.getHttpServer()).get('/api/v1/autocomplete').expect(200);
 
-    const body = res.json<AutocompleteResponse>();
+    const body = res.body as AutocompleteResponse;
     expect(body.suggestions).toHaveLength(10); // default limit
   });
 
   it('GET /api/v1/autocomplete?q=lap&limit=5 → honours limit param', async () => {
-    const res = await server.inject({ method: 'GET', url: '/api/v1/autocomplete?q=lap&limit=5' });
-    expect(res.statusCode).toBe(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/autocomplete?q=lap&limit=5')
+      .expect(200);
 
-    const body = res.json<AutocompleteResponse>();
+    const body = res.body as AutocompleteResponse;
     expect(body.suggestions.length).toBeLessThanOrEqual(5);
   });
 
-  it('GET /api/v1/autocomplete?q=sam&type=brand → returns only brand suggestions', async () => {
-    const res = await server.inject({
-      method: 'GET',
-      url: '/api/v1/autocomplete?q=sam&type=brand',
-    });
-    expect(res.statusCode).toBe(200);
+  it('GET /api/v1/autocomplete?type=brand → returns only brand suggestions', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/autocomplete?type=brand')
+      .expect(200);
 
-    const body = res.json<AutocompleteResponse>();
+    const body = res.body as AutocompleteResponse;
     for (const s of body.suggestions) {
       expect(s.type).toBe('brand');
     }
   });
 
-  it('GET /api/v1/autocomplete?q=zzznomatch → returns empty suggestions', async () => {
-    const res = await server.inject({
-      method: 'GET',
-      url: '/api/v1/autocomplete?q=zzznomatch',
-    });
-    expect(res.statusCode).toBe(200);
+  it('GET /api/v1/autocomplete?type=product → returns only product suggestions', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/autocomplete?type=product')
+      .expect(200);
 
-    const body = res.json<AutocompleteResponse>();
-    expect(body.suggestions).toHaveLength(0);
+    const body = res.body as AutocompleteResponse;
+    for (const s of body.suggestions) {
+      expect(s.type).toBe('product');
+    }
   });
 
   it('GET /api/v1/autocomplete → includes "took" field', async () => {
-    const res = await server.inject({ method: 'GET', url: '/api/v1/autocomplete?q=head' });
-    expect(res.statusCode).toBe(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/autocomplete?q=head')
+      .expect(200);
 
-    const body = res.json<AutocompleteResponse>();
+    const body = res.body as AutocompleteResponse;
     expect(typeof body.took).toBe('number');
-    expect(body.took).toBeLessThan(20); // must respond in < 20ms
+    expect(body.took).toBeLessThan(20);
   });
 
   it('GET /api/v1/autocomplete?limit=0 → 400 validation error', async () => {
-    const res = await server.inject({ method: 'GET', url: '/api/v1/autocomplete?limit=0' });
-    expect(res.statusCode).toBe(400);
+    await request(app.getHttpServer()).get('/api/v1/autocomplete?limit=0').expect(400);
   });
 
   it('GET /api/v1/autocomplete?limit=99 → 400 validation error (limit > 20)', async () => {
-    const res = await server.inject({ method: 'GET', url: '/api/v1/autocomplete?limit=99' });
-    expect(res.statusCode).toBe(400);
+    await request(app.getHttpServer()).get('/api/v1/autocomplete?limit=99').expect(400);
   });
 
-  // ---------------------------------------------------------------------------
+  it('GET /api/v1/autocomplete?type=invalid → 400 validation error', async () => {
+    await request(app.getHttpServer()).get('/api/v1/autocomplete?type=invalid').expect(400);
+  });
+
   // Swagger docs
-  // ---------------------------------------------------------------------------
 
   it('GET /docs → serves Swagger UI', async () => {
-    const res = await server.inject({ method: 'GET', url: '/docs' });
-    expect([200, 302]).toContain(res.statusCode);
+    const res = await request(app.getHttpServer()).get('/docs');
+    expect([200, 302]).toContain(res.status);
   });
 
   it('GET /docs/json → serves OpenAPI spec', async () => {
-    const res = await server.inject({ method: 'GET', url: '/docs/json' });
-    expect(res.statusCode).toBe(200);
-    const spec = res.json<{ info: { title: string } }>();
-    expect(spec.info.title).toBe('Autocomplete Service API');
+    const res = await request(app.getHttpServer()).get('/docs/json').expect(200);
+    expect(res.body).toMatchObject({ info: { title: 'Autocomplete Service API' } });
   });
 });
 
-// ---------------------------------------------------------------------------
 // AutocompleteStore unit tests
-// ---------------------------------------------------------------------------
 
 describe('AutocompleteStore', () => {
   const store = new AutocompleteStore();
@@ -153,8 +149,6 @@ describe('AutocompleteStore', () => {
   });
 
   it('product suggestions rank above query suggestions', () => {
-    // Both "Apple MacBook Pro 14" (product) and "apple" queries should be present;
-    // products should come first in the ordering for the same prefix.
     const results = store.getSuggestions('apple', 20);
     const firstProductIdx = results.findIndex((s) => s.type === 'product');
     const firstQueryIdx = results.findIndex((s) => s.type === 'query');
