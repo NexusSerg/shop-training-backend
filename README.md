@@ -77,7 +77,7 @@ Each service restarts automatically on file changes.
 | API Gateway | 3000 | _(Step 1.5)_ |
 | Search Service | 3001 | `apps/search-service` ✅ Step 1.2 |
 | Catalog Service | 3002 | `apps/catalog-service` ✅ Step 1.1 |
-| Pricing Service | 3003 | `apps/pricing-service` |
+| Pricing Service | 3003 | `apps/pricing-service` ✅ Step 1.3 |
 | Autocomplete Service | 3004 | `apps/autocomplete-service` |
 | Saved Search Service | 3005 | `apps/saved-search-service` |
 
@@ -293,4 +293,65 @@ curl "http://localhost:3001/api/v1/search/facets?q=phone" | jq '.facets.brands'
 ```
 
 > **Note:** The in-memory store resets on restart. Elasticsearch integration is planned for Step 3.3.
+
+---
+
+## Pricing & Inventory Service (Step 1.3 — Mock-First)
+
+The pricing service runs on **port 3003** and uses an in-memory store seeded with **100 deterministic mock products**, each with 1–3 seller offers (faker seed 42 — stable across restarts).
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/api/v1/pricing/:productId` | Get pricing + all seller offers for a product |
+| `POST` | `/api/v1/pricing/bulk` | Batch-fetch pricing for up to 100 products |
+| `GET` | `/api/v1/inventory/:productId/:sellerId` | Get stock details for a product-seller pair |
+| `PATCH` | `/api/v1/inventory/:productId/:sellerId` | Update stock count and/or status |
+
+### Bulk Pricing Request Body
+
+```json
+{ "productIds": ["p-mock-001", "p-mock-002", "..."] }
+```
+
+### Inventory PATCH Body
+
+```json
+{ "stock": 50, "status": "in_stock" }
+```
+
+Both fields are optional but at least one must be provided. If `status` is omitted it is derived automatically from the new `stock` value (0 → `out_of_stock`, < 10 → `low_stock`, ≥ 10 → `in_stock`). An inventory update also recomputes the product-level `priceMin`, `priceMax`, and `bestOffer`.
+
+### Swagger UI
+
+Browse the interactive API docs at **http://localhost:3003/docs** while the service is running.
+
+### Quick test
+
+```bash
+# Start the service
+pnpm --filter @shop/pricing-service dev
+
+# Get pricing for a single mock product
+curl http://localhost:3003/api/v1/pricing/p-mock-001 | jq '{priceMin,priceMax,sellerCount}'
+
+# Bulk-fetch 3 products
+curl -X POST http://localhost:3003/api/v1/pricing/bulk \
+  -H 'Content-Type: application/json' \
+  -d '{"productIds":["p-mock-001","p-mock-002","p-mock-003"]}' | jq '.count'
+
+# Get inventory for a specific seller
+curl http://localhost:3003/api/v1/inventory/p-mock-001/s-001 | jq '{stock,available,status}'
+
+# Update stock for a seller offer
+curl -X PATCH http://localhost:3003/api/v1/inventory/p-mock-001/s-001 \
+  -H 'Content-Type: application/json' \
+  -d '{"stock":0}' | jq '.status'
+# → "out_of_stock"
+```
+
+> **Note:** Mock product IDs follow the pattern `p-mock-NNN` (e.g., `p-mock-001` … `p-mock-100`).
+> The in-memory store resets on restart. Redis + PostgreSQL integration is planned for Step 3.2.
 
