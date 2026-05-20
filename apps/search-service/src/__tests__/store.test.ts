@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SearchStore } from '../mock/store.js';
+import { SearchStore } from '../mock/store';
 import type { ProductSummary } from '@shop/shared-types';
 
 // ---------------------------------------------------------------------------

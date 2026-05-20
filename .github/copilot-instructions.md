@@ -559,6 +559,7 @@ Acceptance:
 Filter changes update URL without full reload
 Back/forward buttons restore previous state
 Sharing URL reproduces exact view
+
 Step 2.5: Filter Panel
 Goal: All filter components functional
 

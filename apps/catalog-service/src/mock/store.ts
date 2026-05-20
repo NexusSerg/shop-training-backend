@@ -1,6 +1,6 @@
 import type { Product, CategoryNode } from '@shop/shared-types';
-import { seedProducts } from './seed.js';
-import { CATEGORY_TREE } from './categories.js';
+import { seedProducts } from './seed';
+import { CATEGORY_TREE } from './categories';
 
 /**
  * In-memory product + category store.

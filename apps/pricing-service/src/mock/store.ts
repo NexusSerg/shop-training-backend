@@ -1,5 +1,5 @@
 import type { ProductPricing, Inventory, PriceMap } from '@shop/shared-types';
-import { seedPricingData } from './seed.js';
+import { seedPricingData } from './seed';
 
 /**
  * In-memory pricing and inventory store.

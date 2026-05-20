@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import type { Product, ProductAttribute, ProductImage } from '@shop/shared-types';
 import { slugify } from '@shop/shared-utils';
-import { LEAF_CATEGORIES } from './categories.js';
+import { LEAF_CATEGORIES } from './categories';
 
 const BRANDS = [
   'Apple',

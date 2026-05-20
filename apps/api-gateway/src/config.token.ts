@@ -1,0 +1,1 @@
+export const GATEWAY_CONFIG = 'GATEWAY_CONFIG';

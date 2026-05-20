@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CatalogStore } from '../mock/store.js';
+import { CatalogStore } from '../mock/store';
 
 describe('CatalogStore', () => {
   let store: CatalogStore;
