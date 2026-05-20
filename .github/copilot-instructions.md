@@ -419,7 +419,7 @@ pricing.ts — Price, Inventory, SellerOffer
 events.ts — Kafka event schemas (ProductUpdatedEvent, etc.)
 Acceptance: All services import from @catalog/shared-types
 
-PHASE 1: Backend Skeleton with Mocks
+##PHASE 1: Backend Skeleton with Mocks
 Step 1.1: Catalog Service (Mock-First)
 Goal: REST API returning mocked products
 
@@ -502,7 +502,7 @@ Add: Rate limiting (per IP), CORS, request ID propagation, structured logging (p
 
 Acceptance: All services reachable through single port
 
-PHASE 2: Frontend Vertical Slice
+##PHASE 2: Frontend Vertical Slice
 Step 2.1: Next.js App Setup
 Goal: SSR-ready Next.js 14 app
 
@@ -627,7 +627,9 @@ Acceptance:
 
 Lighthouse SEO score >95
 Google Rich Results Test validates structured data
-PHASE 3: Replace Mocks with Real Storage
+
+##PHASE 3: Replace Mocks with Real Storage
+
 Step 3.1: PostgreSQL Schema (Catalog)
 Goal: Persistent product catalog
 
@@ -649,11 +651,10 @@ Step: Replace catalog-service mock layer with Prisma queries
 Acceptance: 1M seeded products, queries <50ms with proper indexes
 
 Step 3.2: Redis for Pricing & Inventory
+
 Goal: Sub-millisecond price reads
 
 Schema:
-
-
 
 pricing:{productId} → Hash { min_price, max_price, seller_count }
 inventory:{productId}:{sellerId} → Hash { stock, status }
@@ -690,8 +691,6 @@ Goal: Replace mock with Redis-backed suggestions
 
 Schema:
 
-
-
 autocomplete:popular → Sorted Set (score=frequency, member=query)
 autocomplete:trie → Use Redis modules OR ES completion suggester
 Hybrid approach:
@@ -720,7 +719,8 @@ Note: Auth is out of scope; use a header x-user-id stub for now
 
 Acceptance: Saved search produces shareable URL that restores state
 
-PHASE 4: Event-Driven Updates
+##PHASE 4: Event-Driven Updates
+
 Step 4.1: Kafka Setup & Topics
 Topics:
 
@@ -734,6 +734,7 @@ Message Schemas: Use Avro or JSON Schema, register in shared-types
 Acceptance: Topics created, can publish/consume manually
 
 Step 4.2: Producers
+
 Goal: Services emit events on writes
 
 In catalog-service: After PostgreSQL write, publish to product.updated In pricing-service: After Redis write, publish to price.changed
@@ -767,7 +768,7 @@ Re-index drift items
 Metrics on drift count
 Acceptance: Drift count stays near zero in steady state
 
-PHASE 5: Caching & Performance
+##PHASE 5: Caching & Performance
 Step 5.1: Redis Search Result Caching
 Goal: Cache hot queries
 
@@ -813,7 +814,7 @@ Read replicas for catalog queries
 ES query profiling and slow query log
 Acceptance: All p99 query times within SLA
 
-PHASE 6: Resilience & Observability
+##PHASE 6: Resilience & Observability
 Step 6.1: Observability Stack
 Components:
 
@@ -848,7 +849,7 @@ Bot detection (User-Agent, behavioral)
 Captcha on suspicious patterns
 Acceptance: Load test with bot patterns gets throttled
 
-PHASE 7: Scale Testing & Sale-Event Readiness
+##PHASE 7: Scale Testing & Sale-Event Readiness
 Step 7.1: Load Testing
 Tool: k6 or Gatling
 
@@ -881,7 +882,7 @@ Disable expensive features (e.g., personalized autocomplete) under load
 Read-only mode toggle for catastrophic situations
 Acceptance: Documented runbook with toggles
 
-PHASE 8: Production Hardening
+##PHASE 8: Production Hardening
 Step 8.1: CI/CD Pipeline
 GitHub Actions: lint, test, build per PR
 Docker images per service
