@@ -1,14 +1,48 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import { registerSwagger } from './plugins/swagger.js';
+import { autocompleteRoutes } from './routes/autocomplete.js';
 
 export function createServer() {
-  const server = Fastify({ logger: true });
-
-  server.get('/health', async () => ({ status: 'ok', service: 'autocomplete-service' }));
-
-  // TODO: Step 1.4 — wire autocomplete routes
-  server.get('/api/v1/autocomplete', async (_req, reply) => {
-    await reply.code(501).send({ error: 'Not implemented yet — coming in Step 1.4' });
+  const server = Fastify({
+    logger: {
+      level: process.env['LOG_LEVEL'] ?? 'info',
+    },
   });
+
+  // @fastify/swagger must be registered before routes so it can collect schemas
+  server.register(registerSwagger);
+
+  server.register(cors, {
+    origin: process.env['CORS_ORIGIN'] ?? true,
+  });
+
+  server.get(
+    '/health',
+    {
+      schema: {
+        tags: ['health'],
+        summary: 'Health check',
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              service: { type: 'string' },
+              uptime: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+    async () => ({
+      status: 'ok',
+      service: 'autocomplete-service',
+      uptime: process.uptime(),
+    }),
+  );
+
+  server.register(autocompleteRoutes, { prefix: '/api/v1/autocomplete' });
 
   return server;
 }

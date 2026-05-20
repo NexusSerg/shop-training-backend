@@ -78,7 +78,7 @@ Each service restarts automatically on file changes.
 | Search Service | 3001 | `apps/search-service` ✅ Step 1.2 |
 | Catalog Service | 3002 | `apps/catalog-service` ✅ Step 1.1 |
 | Pricing Service | 3003 | `apps/pricing-service` ✅ Step 1.3 |
-| Autocomplete Service | 3004 | `apps/autocomplete-service` |
+| Autocomplete Service | 3004 | `apps/autocomplete-service` ✅ Step 1.4 |
 | Saved Search Service | 3005 | `apps/saved-search-service` |
 
 Infrastructure:
@@ -352,6 +352,71 @@ curl -X PATCH http://localhost:3003/api/v1/inventory/p-mock-001/s-001 \
 # → "out_of_stock"
 ```
 
-> **Note:** Mock product IDs follow the pattern `p-mock-NNN` (e.g., `p-mock-001` … `p-mock-100`).
-> The in-memory store resets on restart. Redis + PostgreSQL integration is planned for Step 3.2.
+> **Note:** The in-memory store resets on restart. Redis + PostgreSQL integration is planned for Step 3.2.
+
+---
+
+## Autocomplete Service (Step 1.4 — Mock-First)
+
+The autocomplete service runs on **port 3004** and returns ranked suggestions from a static in-memory list covering queries, brands, categories, and product names.
+
+### Endpoint
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/api/v1/autocomplete` | Get search suggestions for a given prefix |
+
+### Query Parameters — `GET /api/v1/autocomplete`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | `string` | `""` | Search prefix (e.g. `"lap"` → `"laptop"`, `"laptop gaming"`, …) |
+| `limit` | `1–20` | `10` | Maximum number of suggestions to return |
+| `type` | `query\|product\|brand\|category` | — | Restrict results to a single suggestion type |
+
+### Suggestion Types & Ranking
+
+Results are ranked first by **type priority** (product > brand > category > query) then by **popularity score** within each type. A `type` query parameter restricts results to a single kind.
+
+### Response Shape
+
+```json
+{
+  "suggestions": [
+    { "text": "Apple MacBook Pro 14", "type": "product", "score": 95,
+      "payload": { "productId": "p-mock-apple-macbook-pro", "slug": "apple-macbook-pro-14" } },
+    { "text": "Apple", "type": "brand", "score": 100 },
+    { "text": "apple iphone", "type": "query", "score": 90 }
+  ],
+  "took": 0
+}
+```
+
+### Swagger UI
+
+Browse the interactive API docs at **http://localhost:3004/docs** while the service is running.
+
+### Quick test
+
+```bash
+# Start the service
+pnpm --filter @shop/autocomplete-service dev
+
+# Prefix search — "lap" → laptop suggestions
+curl "http://localhost:3004/api/v1/autocomplete?q=lap" | jq '.suggestions[].text'
+
+# Brand-only suggestions for "sam"
+curl "http://localhost:3004/api/v1/autocomplete?q=sam&type=brand" | jq '.'
+
+# Top 5 suggestions with no prefix
+curl "http://localhost:3004/api/v1/autocomplete?limit=5" | jq '.suggestions[].text'
+
+# Empty prefix — returns global top suggestions
+curl "http://localhost:3004/api/v1/autocomplete" | jq '.suggestions | length'
+```
+
+> **Note:** The mock suggestion list is static and resets on restart.
+> In Step 3.4 suggestions will be backed by Redis Sorted Sets (popular queries) and the Elasticsearch completion suggester (product names).
+
 
