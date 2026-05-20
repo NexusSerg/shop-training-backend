@@ -14,8 +14,11 @@
   "dependencies": {
     "@shop/shared-types": "workspace:*",
     "@shop/shared-utils": "workspace:*",
-    "fastify": "^4.28.0",
+    "@faker-js/faker": "^9.0.0",
     "@fastify/cors": "^9.0.0",
+    "@fastify/swagger": "^8.15.0",
+    "@fastify/swagger-ui": "^4.0.0",
+    "fastify": "^4.28.0",
     "zod": "^3.23.0",
     "pino": "^9.0.0"
   },
