@@ -74,7 +74,7 @@ Each service restarts automatically on file changes.
 
 | Service | Port | Package |
 |---------|------|---------|
-| API Gateway | 3000 | _(Step 1.5)_ |
+| API Gateway | 3000 | `apps/api-gateway` ✅ Step 1.5 |
 | Search Service | 3001 | `apps/search-service` ✅ Step 1.2 |
 | Catalog Service | 3002 | `apps/catalog-service` ✅ Step 1.1 |
 | Pricing Service | 3003 | `apps/pricing-service` ✅ Step 1.3 |
@@ -137,6 +137,7 @@ pnpm --filter @shop/shared-utils test
 
 ```
 apps/
+├── api-gateway/            # Single entry point: routing, CORS, rate limiting (port 3000)
 ├── search-service/         # Full-text search + faceted filtering (port 3001)
 ├── catalog-service/        # Product CRUD + category hierarchy (port 3002)
 ├── pricing-service/        # Real-time price & inventory (port 3003)
@@ -159,6 +160,7 @@ infra/
 Once services are running, verify each is up:
 
 ```bash
+curl http://localhost:3000/health  # api-gateway
 curl http://localhost:3001/health  # search-service
 curl http://localhost:3002/health  # catalog-service
 curl http://localhost:3003/health  # pricing-service
@@ -167,6 +169,84 @@ curl http://localhost:3005/health  # saved-search-service
 ```
 
 Expected response: `{"status":"ok","service":"<name>"}`
+
+Use the gateway's fan-out health check to verify all upstreams at once:
+
+```bash
+curl http://localhost:3000/health/services | jq '.'
+```
+
+---
+
+## API Gateway (Step 1.5)
+
+The API gateway runs on **port 3000** and is the single entry point for all client traffic.
+It handles request routing, CORS enforcement, rate limiting, and request-ID propagation.
+
+> **CDN note:** In production a CDN layer (CloudFront / Akamai) sits in front of this gateway
+> and adds edge caching, SSL termination, and geo-routing. For local development the CDN is
+> skipped — the gateway is the single entry point.
+
+### Route table
+
+| Prefix | Upstream | Service |
+|--------|----------|---------|
+| `/api/v1/search` | `localhost:3001` | Search Service |
+| `/api/v1/products` | `localhost:3002` | Catalog Service |
+| `/api/v1/categories` | `localhost:3002` | Catalog Service |
+| `/api/v1/pricing` | `localhost:3003` | Pricing Service |
+| `/api/v1/inventory` | `localhost:3003` | Pricing Service |
+| `/api/v1/autocomplete` | `localhost:3004` | Autocomplete Service |
+| `/api/v1/saved-searches` | `localhost:3005` | Saved Search Service |
+
+### Features
+
+| Feature | Details |
+|---------|---------|
+| **Proxy** | `@fastify/http-proxy` — preserves full URL path |
+| **CORS** | Enforced at gateway; configurable via `CORS_ORIGIN` env var |
+| **Rate limiting** | `@fastify/rate-limit` — 100 req/min per IP (global), configurable via env |
+| **Request ID** | Fastify `genReqId` generates UUID per request; propagated to upstreams as `x-request-id` |
+| **Structured logging** | Pino JSON logs with `reqId` field on every request |
+| **Health endpoints** | `GET /health` — gateway status; `GET /health/services` — fan-out to all upstreams |
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GATEWAY_PORT` | `3000` | Gateway listen port |
+| `SEARCH_SERVICE_URL` | `http://localhost:3001` | Search Service URL |
+| `CATALOG_SERVICE_URL` | `http://localhost:3002` | Catalog Service URL |
+| `PRICING_SERVICE_URL` | `http://localhost:3003` | Pricing Service URL |
+| `AUTOCOMPLETE_SERVICE_URL` | `http://localhost:3004` | Autocomplete Service URL |
+| `SAVED_SEARCH_SERVICE_URL` | `http://localhost:3005` | Saved Search Service URL |
+| `RATE_LIMIT_MAX` | `100` | Max requests per window per IP |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limit window in ms |
+| `SEARCH_RATE_LIMIT_MAX` | `30` | Reserved for per-route stricter limit on search/autocomplete |
+| `CORS_ORIGIN` | `true` (reflect origin) | Allowed CORS origin(s) |
+| `LOG_LEVEL` | `info` | Pino log level |
+
+### Quick test
+
+```bash
+# Start the gateway (all upstream services must also be running)
+pnpm --filter @shop/api-gateway dev
+
+# Gateway health
+curl http://localhost:3000/health
+
+# Fan-out health check across all upstreams
+curl http://localhost:3000/health/services | jq '.services[] | {name, status}'
+
+# Route to search service via gateway
+curl "http://localhost:3000/api/v1/search?q=laptop" | jq '.pagination'
+
+# Route to catalog service via gateway
+curl http://localhost:3000/api/v1/products | jq '.count'
+
+# Route to autocomplete via gateway
+curl "http://localhost:3000/api/v1/autocomplete?q=lap" | jq '.suggestions[].text'
+```
 
 ---
 
