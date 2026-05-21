@@ -1,0 +1,55 @@
+name: Publish @nexusserg/api-client
+
+on:
+  push:
+    tags:
+      - 'api-client/v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version to publish (e.g. 0.1.0)'
+        required: false
+
+jobs:
+  publish:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@nexusserg'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared-types (dependency)
+        run: pnpm --filter @shop/shared-types build
+
+      - name: Build api-client
+        run: pnpm --filter @nexusserg/api-client build
+
+      - name: Bump version (manual dispatch only)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        run: |
+          cd packages/api-client
+          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+
+      - name: Publish to GitHub Packages
+        run: pnpm --filter @nexusserg/api-client publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
