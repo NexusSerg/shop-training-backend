@@ -147,7 +147,7 @@ apps/
 packages/
 ├── shared-types/           # TypeScript domain models (Product, Search, Events…)
 ├── shared-utils/           # URL↔SearchState helpers, retry, slugify
-├── api-client/             # Typed HTTP client SDK (used by frontend)
+├── api-client/             # Typed HTTP client SDK — published as @nexusserg/api-client
 └── eslint-config/          # Shared ESLint rules
 infra/
 └── docker-compose.yml      # Local dev infrastructure
@@ -499,4 +499,60 @@ curl "http://localhost:3004/api/v1/autocomplete" | jq '.suggestions | length'
 > **Note:** The mock suggestion list is static and resets on restart.
 > In Step 3.4 suggestions will be backed by Redis Sorted Sets (popular queries) and the Elasticsearch completion suggester (product names).
 
+---
 
+## Frontend Integration
+
+The typed HTTP SDK is published to GitHub Packages as **`@nexusserg/api-client`**.
+It bundles all domain types — no additional peer dependencies needed.
+
+### Publishing (maintainers)
+
+The package is published automatically via GitHub Actions when a tag matching `api-client/v*` is pushed:
+
+```bash
+# Bump version in packages/api-client/package.json, then:
+git tag api-client/v0.1.0
+git push origin api-client/v0.1.0
+```
+
+Or trigger manually from the **Actions → Publish @nexusserg/api-client** workflow.
+
+### Installing in the frontend repo
+
+```bash
+# 1. Authenticate with GitHub Packages (one-time setup)
+#    Generate a token at: https://github.com/settings/tokens (scope: read:packages)
+echo "@nexusserg:registry=https://npm.pkg.github.com" >> .npmrc
+echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> .npmrc
+
+# 2. Install the SDK
+npm install @nexusserg/api-client
+# or
+pnpm add @nexusserg/api-client
+```
+
+### Usage in Next.js
+
+```typescript
+import { CatalogClient } from '@nexusserg/api-client';
+
+const client = new CatalogClient({
+  baseUrl: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000',
+});
+
+// Server Component (SSR)
+const results = await client.search({ q: 'laptop', page: 1, perPage: 24 });
+
+// With filters
+const filtered = await client.search({
+  q: 'phone',
+  brands: ['apple', 'samsung'],
+  priceMin: 500,
+  priceMax: 1500,
+  rating: 4,
+  sort: 'price_asc',
+});
+```
+
+The API Gateway at `http://localhost:3000` is the single entry point — the frontend only ever talks to that one host.

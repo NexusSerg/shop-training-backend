@@ -1,17 +1,26 @@
 {
-  "name": "@shop/api-client",
-  "version": "0.0.1",
-  "private": true,
+  "name": "@nexusserg/api-client",
+  "version": "0.1.0",
+  "description": "Typed HTTP client SDK for the shop-training-backend API",
   "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     }
   },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsup",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -19,6 +28,14 @@
     "@shop/shared-types": "workspace:*"
   },
   "devDependencies": {
+    "tsup": "^8.5.1",
     "typescript": "^5.5.0"
-  }
+  },
+  "keywords": [
+    "ecommerce",
+    "catalog",
+    "api-client",
+    "typescript"
+  ],
+  "license": "MIT"
 }

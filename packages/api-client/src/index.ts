@@ -75,7 +75,7 @@ export class CatalogClient {
     if (params.inStockOnly) qs.set('in_stock', 'true');
     if (params.attributes) {
       for (const [key, values] of Object.entries(params.attributes)) {
-        qs.set(`attr_${key}`, values.join(','));
+        qs.set(`attr_${key}`, (values as string[]).join(','));
       }
     }
     return this.request<SearchResponse>(`/api/v1/search?${qs}`);
@@ -130,3 +130,15 @@ export class CatalogClient {
     });
   }
 }
+
+// Re-export all domain types so consumers only need this one package
+export type {
+  Product, ProductSummary, ProductAttribute, ProductImage, ProductDocument, ProductStatus,
+  SearchRequest, SearchResponse, SearchFilters, SearchState, SortOption, PerPageOption,
+  FacetBucket, PriceRangeFacet, Facets, PaginationMeta, Suggestion, AutocompleteResponse,
+  Price, SellerOffer, ProductPricing, Inventory, PriceMap,
+  FilterDefinition, FilterOption, PriceRange, RatingFilter, ActiveFilter, CategoryNode,
+  BaseEvent, ProductCreatedEvent, ProductUpdatedEvent, ProductDeletedEvent,
+  PriceChangedEvent, InventoryUpdatedEvent, CatalogEvent, KafkaTopic,
+  SavedSearch, CreateSavedSearchRequest,
+} from '@shop/shared-types';
