@@ -1,8 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "paths": {
+      "@shop/shared-types": [
+        "../shared-types/src/index.ts"
+      ]
+    },
+    "rootDir": "../"
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }
