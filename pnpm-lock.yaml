@@ -407,10 +407,6 @@ importers:
         version: 2.1.9(@types/node@22.19.19)
 
   packages/api-client:
-    dependencies:
-      '@shop/shared-types':
-        specifier: workspace:*
-        version: link:../shared-types
     devDependencies:
       tsup:
         specifier: ^8.5.1
