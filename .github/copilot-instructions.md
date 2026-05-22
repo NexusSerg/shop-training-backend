@@ -905,3 +905,23 @@ Each step is a PR: Small, reviewable, independently deployable
 Tests at every step: Unit tests for logic, integration tests for endpoints, E2E for flows
 Stub before integrate: Get the contract right before connecting real systems
 Update readme.md each phase if it's a significant changes
+
+## CI/CD Guardrails for @nexusserg/api-client Publish
+
+When Copilot modifies release automation, it must preserve and follow these rules:
+
+1. Workflow file for api-client publish is `.github/workflows/publish-api-client.yml`.
+2. Release trigger via tag must use pattern `api-client/v*`.
+3. Release version source of truth:
+  - Tag runs: derive version from tag name (`api-client/vX.Y.Z` -> `X.Y.Z`).
+  - Manual runs: use `workflow_dispatch.inputs.version` if provided.
+  - If manual input is empty: use current `packages/api-client/package.json` version.
+4. Version must be validated as semver before build or publish steps.
+5. Package version must be set before build so artifacts are built with the release version.
+6. Workflow must fail fast if package version and resolved release version differ.
+7. Workflow must fail if `@nexusserg/api-client@<version>` is already published on GitHub Packages.
+8. Publish target must remain GitHub Packages (`https://npm.pkg.github.com`) with scope `@nexusserg`.
+9. Do not remove `NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}` from publish step.
+10. Prefer explicit, early validation and clear failure messages over silent fallbacks.
+
+If Copilot updates this workflow in future tasks, it should keep these guardrails unless the user explicitly asks to change release policy.

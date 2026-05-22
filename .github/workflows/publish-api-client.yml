@@ -22,6 +22,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve release version
+        id: release
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            TAG_VERSION="${GITHUB_REF_NAME#api-client/v}"
+            if [[ "${TAG_VERSION}" == "${GITHUB_REF_NAME}" ]]; then
+              echo "Invalid tag format. Expected api-client/v<semver>. Got: ${GITHUB_REF_NAME}" >&2
+              exit 1
+            fi
+            echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            INPUT_VERSION="${{ github.event.inputs.version }}"
+            if [[ -n "${INPUT_VERSION}" ]]; then
+              echo "version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+            else
+              CURRENT_VERSION=$(node -p "require('./packages/api-client/package.json').version")
+              echo "version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Validate semver format
+        shell: bash
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          SEMVER_REGEX='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if [[ ! "${VERSION}" =~ ${SEMVER_REGEX} ]]; then
+            echo "Invalid version: ${VERSION}. Expected semver, e.g. 1.2.3, 1.2.3-beta.1, or 1.2.3+build.7" >&2
+            exit 1
+          fi
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -37,19 +68,39 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Set package version
+        shell: bash
+        run: |
+          cd packages/api-client
+          npm version "${{ steps.release.outputs.version }}" --no-git-tag-version
+
+      - name: Validate package version matches release version
+        shell: bash
+        run: |
+          ACTUAL_VERSION=$(node -p "require('./packages/api-client/package.json').version")
+          EXPECTED_VERSION="${{ steps.release.outputs.version }}"
+          if [[ "${ACTUAL_VERSION}" != "${EXPECTED_VERSION}" ]]; then
+            echo "Version mismatch. package.json=${ACTUAL_VERSION}, release=${EXPECTED_VERSION}" >&2
+            exit 1
+          fi
+
       - name: Build shared-types (dependency)
         run: pnpm --filter @shop/shared-types build
 
       - name: Build api-client
         run: pnpm --filter @nexusserg/api-client build
 
-      - name: Bump version (manual dispatch only)
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+      - name: Fail if version already published
+        shell: bash
         run: |
-          cd packages/api-client
-          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          PACKAGE_VERSION="${{ steps.release.outputs.version }}"
+          PACKAGE_NAME='@nexusserg/api-client'
+          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --registry https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published. Bump version before publishing." >&2
+            exit 1
+          fi
 
       - name: Publish to GitHub Packages
-        run: pnpm --filter @nexusserg/api-client publish --no-git-checks
+        run: pnpm --filter @nexusserg/api-client publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

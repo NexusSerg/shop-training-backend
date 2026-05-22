@@ -133,6 +133,53 @@ pnpm --filter @shop/shared-utils test
 
 ---
 
+## Release Runbook: @nexusserg/api-client
+
+This package is published by GitHub Actions using [.github/workflows/publish-api-client.yml](.github/workflows/publish-api-client.yml).
+
+### Option A: Tag-based release (recommended)
+
+1. Update version locally in [packages/api-client/package.json](packages/api-client/package.json) to the next semver.
+2. Commit the version change.
+3. Create and push a tag in the required format:
+
+```bash
+git tag api-client/v0.2.0
+git push origin api-client/v0.2.0
+```
+
+4. GitHub Actions publishes to GitHub Packages: @nexusserg/api-client@0.2.0.
+
+### Option B: Manual workflow dispatch
+
+1. Open Actions -> Publish @nexusserg/api-client -> Run workflow.
+2. Provide version (for example: 0.2.0) or leave empty to use the current package.json version.
+3. Run the workflow.
+
+### What the workflow enforces
+
+1. Tag format must be api-client/v<version>.
+2. Resolved version must be valid semver.
+3. Package version is set before build.
+4. Build runs for @shop/shared-types and @nexusserg/api-client.
+5. Publish fails if that version already exists on GitHub Packages.
+6. Publish uses GitHub Packages registry with GITHUB_TOKEN auth.
+
+### Common failure reasons
+
+1. Invalid tag format (not starting with api-client/v).
+2. Invalid version format (not semver).
+3. Version already published.
+4. Build failure in shared-types or api-client.
+
+### Verify published package
+
+```bash
+npm view @nexusserg/api-client versions --registry https://npm.pkg.github.com
+```
+
+---
+
 ## Project Structure
 
 ```
