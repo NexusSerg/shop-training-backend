@@ -76,7 +76,7 @@ Each service restarts automatically on file changes.
 |---------|------|---------|
 | API Gateway | 3000 | `apps/api-gateway` ✅ Step 1.5 |
 | Search Service | 3001 | `apps/search-service` ✅ Step 1.2 |
-| Catalog Service | 3002 | `apps/catalog-service` ✅ Step 1.1 |
+| Catalog Service | 3002 | `apps/catalog-service` ✅ Step 3.1 |
 | Pricing Service | 3003 | `apps/pricing-service` ✅ Step 1.3 |
 | Autocomplete Service | 3004 | `apps/autocomplete-service` ✅ Step 1.4 |
 | Saved Search Service | 3005 | `apps/saved-search-service` |
@@ -297,20 +297,61 @@ curl "http://localhost:3000/api/v1/autocomplete?q=lap" | jq '.suggestions[].text
 
 ---
 
-## Catalog Service (Step 1.1 — Mock-First)
+## Catalog Service (Step 3.1 — PostgreSQL)
 
-The catalog service runs on **port 3002** and uses an in-memory store seeded with **100 deterministic fake products** (via `@faker-js/faker` with a fixed seed, so IDs are stable across restarts).
+The catalog service runs on **port 3002** and is backed by **PostgreSQL** via Prisma ORM.
+It requires a running PostgreSQL instance (started via `docker compose`) and the `DATABASE_URL` environment variable.
+
+> **Migration:** Prisma manages the schema — run `pnpm --filter @shop/catalog-service db:migrate` to apply migrations.
+> **Seeding:** Use `pnpm --filter @shop/catalog-service db:seed` to seed 1 M products (≈2-5 min), or `db:seed:dev` for a quick 10 k-product seed.
 
 ### Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
-| `GET` | `/api/v1/products` | List all products (or bulk-fetch with `?ids=id1,id2`) |
+| `GET` | `/api/v1/products` | List products (paginated) or bulk-fetch with `?ids=id1,id2` |
 | `GET` | `/api/v1/products/:id` | Get single product by ID |
 | `POST` | `/api/v1/products` | Create a product _(admin)_ |
 | `PATCH` | `/api/v1/products/:id` | Update product fields _(admin)_ |
 | `GET` | `/api/v1/categories` | Get full category tree with product counts |
+
+### List products query parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ids` | — | Comma-separated product IDs (max 100); returns only those IDs |
+| `limit` | `100` | Page size (max 200) |
+| `offset` | `0` | Pagination offset |
+
+### Database schema
+
+Tables created by Prisma migrations in `apps/catalog-service/prisma/migrations/`:
+
+| Table | Purpose |
+|-------|---------|
+| `products` | Core product catalog — indexed on `brand`, `status`, `createdAt`, `primaryCategoryId` |
+| `categories` | Hierarchical category tree (adjacency list) |
+| `product_categories` | Product ↔ Category many-to-many join |
+| `product_attributes` | EAV attributes (color, size, material…) — indexed on `productId`, `key` |
+| `product_images` | Product images — indexed on `productId` |
+| `sellers` | Seller registry |
+| `seller_offers` | Per-product-seller pricing and stock |
+
+### Seeding
+
+```bash
+# Apply migrations (idempotent)
+pnpm --filter @shop/catalog-service db:migrate
+
+# Seed 10,000 products quickly for local dev
+DATABASE_URL=postgresql://shop:shop_secret@localhost:5432/shop_catalog \
+  pnpm --filter @shop/catalog-service db:seed:dev
+
+# Seed the full 1,000,000 products (~2-5 min)
+DATABASE_URL=postgresql://shop:shop_secret@localhost:5432/shop_catalog \
+  pnpm --filter @shop/catalog-service db:seed
+```
 
 ### Swagger UI
 
@@ -319,22 +360,27 @@ Browse the interactive API docs at **http://localhost:3002/docs** while the serv
 ### Quick test
 
 ```bash
-# Start the service
-pnpm --filter @shop/catalog-service dev
+# Start the service (DATABASE_URL must be set)
+DATABASE_URL=postgresql://shop:shop_secret@localhost:5432/shop_catalog \
+  pnpm --filter @shop/catalog-service dev
 
-# Fetch all seeded products
-curl http://localhost:3002/api/v1/products | jq '.count'
+# Paginated list
+curl "http://localhost:3002/api/v1/products?limit=10&offset=0" | jq '.total'
 
-# Fetch a product by ID (grab an ID from the list above)
-curl http://localhost:3002/api/v1/products/<id>
+# Fetch a product by ID
+curl "http://localhost:3002/api/v1/products/<uuid>" | jq '{id,name,brand}'
+
+# Bulk fetch
+curl "http://localhost:3002/api/v1/products?ids=<id1>,<id2>" | jq '.count'
 
 # Create a new product
 curl -X POST http://localhost:3002/api/v1/products \
   -H 'Content-Type: application/json' \
   -d '{"sku":"MY-SKU","name":"My Product","brand":"Acme","categoryId":"cat-laptops"}'
-```
 
-> **Note:** The in-memory store resets on restart. PostgreSQL integration is planned for Step 3.1.
+# Category tree
+curl http://localhost:3002/api/v1/categories | jq '.data[0] | {id,name,productCount}'
+```
 
 ---
 
