@@ -10,9 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist",
-    "db:migrate": "prisma migrate deploy",
-    "db:seed": "ts-node src/db/seed.ts",
-    "db:seed:dev": "ts-node src/db/seed.ts --count 10000",
+    "db:migrate": "NODE_OPTIONS='--env-file=../../.env' prisma migrate deploy",
+    "db:seed": "NODE_OPTIONS='--env-file=../../.env' ts-node src/db/seed.ts",
+    "db:seed:dev": "NODE_OPTIONS='--env-file=../../.env' ts-node src/db/seed.ts --count 10000",
     "prisma:generate": "prisma generate"
   },
   "dependencies": {
@@ -24,6 +24,7 @@
     "@prisma/client": "^5.22.0",
     "@shop/shared-types": "workspace:*",
     "@shop/shared-utils": "workspace:*",
+    "dotenv": "^17.4.2",
     "pg": "^8.21.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",

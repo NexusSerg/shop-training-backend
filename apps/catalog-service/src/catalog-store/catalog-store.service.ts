@@ -211,9 +211,9 @@ export class CatalogStoreService {
             isPrimary: img.isPrimary,
           })),
         },
-        categories: product.categoryId
-          ? { create: { categoryId: product.categoryId } }
-          : undefined,
+        ...(product.categoryId
+          ? { categories: { create: { categoryId: product.categoryId } } }
+          : {}),
       },
       include: PRODUCT_INCLUDE,
     })) as PrismaProductFull;
