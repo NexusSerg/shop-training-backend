@@ -9,8 +9,8 @@ export class CategoriesController {
 
   @Get()
   @ApiOperation({ summary: 'Get the full category tree' })
-  getCategories() {
-    const categories = this.store.getCategories();
+  async getCategories() {
+    const categories = await this.store.getCategories();
     return { data: categories, count: categories.length };
   }
 }

@@ -360,9 +360,9 @@ const useSearchStateSync = () => {
   // - Saved searches (just store the URL)
 };
 
-#Plan step by step implementation of this solution
-###steps can include tempory mock data or stubbing methods
-###implementation should be agent friendly
+# Plan step by step implementation of this solution
+### steps can include tempory mock data or stubbing methods
+### implementation should be agent friendly
 E-commerce Product Catalog: Step-by-Step Implementation Plan
 Implementation Philosophy
 Incremental & testable: Each step produces working, verifiable output
@@ -419,7 +419,7 @@ pricing.ts — Price, Inventory, SellerOffer
 events.ts — Kafka event schemas (ProductUpdatedEvent, etc.)
 Acceptance: All services import from @catalog/shared-types
 
-##PHASE 1: Backend Skeleton with Mocks
+## PHASE 1: Backend Skeleton with Mocks
 Step 1.1: Catalog Service (Mock-First)
 Goal: REST API returning mocked products
 
@@ -502,7 +502,7 @@ Add: Rate limiting (per IP), CORS, request ID propagation, structured logging (p
 
 Acceptance: All services reachable through single port
 
-##PHASE 2: Frontend Vertical Slice
+## PHASE 2: Frontend Vertical Slice
 Step 2.1: Next.js App Setup
 Goal: SSR-ready Next.js 14 app
 
@@ -629,7 +629,9 @@ Acceptance:
 Lighthouse SEO score >95
 Google Rich Results Test validates structured data
 
-##PHASE 3: Replace Mocks with Real Storage
+### Phase 2 - is implemented in separate repository (../shop-training-frontend)
+
+## PHASE 3: Replace Mocks with Real Storage
 
 Step 3.1: PostgreSQL Schema (Catalog)
 Goal: Persistent product catalog
@@ -720,7 +722,7 @@ Note: Auth is out of scope; use a header x-user-id stub for now
 
 Acceptance: Saved search produces shareable URL that restores state
 
-##PHASE 4: Event-Driven Updates
+## PHASE 4: Event-Driven Updates
 
 Step 4.1: Kafka Setup & Topics
 Topics:
@@ -769,7 +771,7 @@ Re-index drift items
 Metrics on drift count
 Acceptance: Drift count stays near zero in steady state
 
-##PHASE 5: Caching & Performance
+## PHASE 5: Caching & Performance
 Step 5.1: Redis Search Result Caching
 Goal: Cache hot queries
 
@@ -815,7 +817,7 @@ Read replicas for catalog queries
 ES query profiling and slow query log
 Acceptance: All p99 query times within SLA
 
-##PHASE 6: Resilience & Observability
+## PHASE 6: Resilience & Observability
 Step 6.1: Observability Stack
 Components:
 
@@ -850,7 +852,7 @@ Bot detection (User-Agent, behavioral)
 Captcha on suspicious patterns
 Acceptance: Load test with bot patterns gets throttled
 
-##PHASE 7: Scale Testing & Sale-Event Readiness
+## PHASE 7: Scale Testing & Sale-Event Readiness
 Step 7.1: Load Testing
 Tool: k6 or Gatling
 
@@ -883,7 +885,7 @@ Disable expensive features (e.g., personalized autocomplete) under load
 Read-only mode toggle for catastrophic situations
 Acceptance: Documented runbook with toggles
 
-##PHASE 8: Production Hardening
+## PHASE 8: Production Hardening
 Step 8.1: CI/CD Pipeline
 GitHub Actions: lint, test, build per PR
 Docker images per service
@@ -925,3 +927,5 @@ When Copilot modifies release automation, it must preserve and follow these rule
 10. Prefer explicit, early validation and clear failure messages over silent fallbacks.
 
 If Copilot updates this workflow in future tasks, it should keep these guardrails unless the user explicitly asks to change release policy.
+
+## Always update readme.md according to changes made in the project

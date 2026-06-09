@@ -1,44 +1,157 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+/**
+ * Route-level integration tests for the Catalog Service.
+ * PrismaService is replaced with a vi mock so no real DB is needed for CI.
+ */
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../app.module';
-import { CatalogStoreService } from '../catalog-store/catalog-store.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { setupSwagger } from '../swagger';
+
+// ---------------------------------------------------------------------------
+// Seed fixtures
+// ---------------------------------------------------------------------------
+
+const NOW = new Date('2024-01-01T00:00:00Z');
+
+function makeRow(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    sku: `SKU-${id}`,
+    name: `Product ${id}`,
+    description: 'A product',
+    brand: 'TestBrand',
+    slug: `product-${id}`,
+    status: 'active',
+    primaryCategoryId: 'cat-laptops',
+    metaTitle: `Product ${id}`,
+    metaDescription: `Desc ${id}`,
+    createdAt: NOW,
+    updatedAt: NOW,
+    primaryCategory: {
+      id: 'cat-laptops',
+      name: 'Laptops',
+      slug: 'laptops',
+      path: ['Electronics', 'Laptops'],
+      parentId: 'cat-electronics',
+    },
+    attributes: [],
+    images: [],
+    ...overrides,
+  };
+}
+
+const SEED_ROWS = Array.from({ length: 5 }, (_, i) => makeRow(`p-00${i + 1}`));
+const [ROW_A, ROW_B] = SEED_ROWS;
+
+const CATEGORY_ROWS = [
+  {
+    id: 'cat-electronics',
+    name: 'Electronics',
+    slug: 'electronics',
+    path: ['Electronics'],
+    parentId: null,
+    _count: { primaryProducts: 3 },
+  },
+  {
+    id: 'cat-laptops',
+    name: 'Laptops',
+    slug: 'laptops',
+    path: ['Electronics', 'Laptops'],
+    parentId: 'cat-electronics',
+    _count: { primaryProducts: 3 },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Mock PrismaService
+// ---------------------------------------------------------------------------
+
+function buildPrismaMock() {
+  const store = new Map(SEED_ROWS.map((r) => [r.id, r]));
+
+  return {
+    onModuleInit: vi.fn().mockResolvedValue(undefined),
+    onModuleDestroy: vi.fn().mockResolvedValue(undefined),
+    $connect: vi.fn().mockResolvedValue(undefined),
+    $disconnect: vi.fn().mockResolvedValue(undefined),
+    product: {
+      findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(store.get(where.id) ?? null),
+      ),
+      findMany: vi.fn(({ where }: { where?: { id?: { in?: string[] } } } = {}) => {
+        const ids = where?.id?.in;
+        const rows = ids ? SEED_ROWS.filter((r) => ids.includes(r.id)) : SEED_ROWS;
+        return Promise.resolve(rows);
+      }),
+      count: vi.fn().mockResolvedValue(SEED_ROWS.length),
+      create: vi.fn(({ data }: { data: Record<string, unknown> }) => {
+        const row = makeRow(data['id'] as string, { sku: data['sku'], name: data['name'], brand: data['brand'], status: data['status'] ?? 'draft' });
+        store.set(row.id, row);
+        return Promise.resolve(row);
+      }),
+      update: vi.fn(({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const existing = store.get(where.id);
+        if (!existing) return Promise.reject(new Error('Not found'));
+        const updated = { ...existing, ...data };
+        store.set(where.id, updated);
+        return Promise.resolve(updated);
+      }),
+      delete: vi.fn(({ where }: { where: { id: string } }) => {
+        if (!store.has(where.id)) return Promise.reject(new Error('Not found'));
+        store.delete(where.id);
+        return Promise.resolve({});
+      }),
+    },
+    category: {
+      findMany: vi.fn().mockResolvedValue(CATEGORY_ROWS),
+      upsert: vi.fn().mockResolvedValue({}),
+    },
+    $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Test suite
+// ---------------------------------------------------------------------------
 
 describe('Catalog Service routes', () => {
   let app: INestApplication;
-  let store: CatalogStoreService;
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(buildPrismaMock())
+      .compile();
 
     app = module.createNestApplication();
     setupSwagger(app);
     await app.init();
-    store = module.get(CatalogStoreService);
   });
 
   afterAll(async () => {
     await app.close();
   });
 
+  // ---
+
   it('GET /health → 200 with service name', async () => {
     const res = await request(app.getHttpServer()).get('/health').expect(200);
     expect(res.body).toMatchObject({ status: 'ok', service: 'catalog-service' });
   });
 
-  it('GET /api/v1/products → returns all 100 seeded products', async () => {
+  it('GET /api/v1/products → returns paginated products', async () => {
     const res = await request(app.getHttpServer()).get('/api/v1/products').expect(200);
-    expect(res.body.count).toBe(100);
-    expect(res.body.data).toHaveLength(100);
+    expect(res.body.data).toHaveLength(SEED_ROWS.length);
+    expect(res.body.total).toBe(SEED_ROWS.length);
   });
 
   it('GET /api/v1/products?ids=id1,id2 → returns matching products', async () => {
-    const [first, second] = store.getAllProducts();
-    const ids = [first?.id, second?.id].filter(Boolean).join(',');
+    const ids = [ROW_A?.id, ROW_B?.id].filter(Boolean).join(',');
     const res = await request(app.getHttpServer()).get(`/api/v1/products?ids=${ids}`).expect(200);
     expect(res.body.count).toBe(2);
   });
@@ -49,10 +162,10 @@ describe('Catalog Service routes', () => {
   });
 
   it('GET /api/v1/products/:id → 200 for existing product', async () => {
-    const product = store.getAllProducts()[0];
-    if (!product) throw new Error('No seeded products found');
-    const res = await request(app.getHttpServer()).get(`/api/v1/products/${product.id}`).expect(200);
-    expect(res.body).toMatchObject({ id: product.id, name: product.name });
+    const row = ROW_A;
+    if (!row) throw new Error('No seed row');
+    const res = await request(app.getHttpServer()).get(`/api/v1/products/${row.id}`).expect(200);
+    expect(res.body).toMatchObject({ id: row.id, name: row.name });
   });
 
   it('GET /api/v1/products/:id → 404 for unknown ID', async () => {
@@ -75,13 +188,13 @@ describe('Catalog Service routes', () => {
   });
 
   it('PATCH /api/v1/products/:id → 200 with updated fields', async () => {
-    const product = store.getAllProducts()[0];
-    if (!product) throw new Error('No seeded products found');
+    const row = ROW_A;
+    if (!row) throw new Error('No seed row');
     const res = await request(app.getHttpServer())
-      .patch(`/api/v1/products/${product.id}`)
+      .patch(`/api/v1/products/${row.id}`)
       .send({ name: 'Patched Name', status: 'inactive' })
       .expect(200);
-    expect(res.body).toMatchObject({ id: product.id, name: 'Patched Name', status: 'inactive' });
+    expect(res.body).toMatchObject({ id: row.id, name: 'Patched Name', status: 'inactive' });
   });
 
   it('PATCH /api/v1/products/:id → 404 for unknown product', async () => {
