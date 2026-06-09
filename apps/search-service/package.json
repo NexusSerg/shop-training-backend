@@ -9,9 +9,13 @@
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "es:index": "ts-node src/scripts/index-products.ts",
+    "es:index:dev": "ts-node src/scripts/index-products.ts --limit 10000",
+    "es:reindex": "ts-node src/scripts/index-products.ts --recreate"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "^9.4.2",
     "@faker-js/faker": "^9.0.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/core": "^10.0.0",
@@ -19,6 +23,7 @@
     "@nestjs/swagger": "^7.4.0",
     "@shop/shared-types": "workspace:*",
     "@shop/shared-utils": "workspace:*",
+    "pg": "^8.21.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
     "zod": "^3.23.0"
@@ -28,6 +33,7 @@
     "@shop/eslint-config": "workspace:*",
     "@swc/core": "^1.15.33",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
     "@types/supertest": "^6.0.0",
     "supertest": "^7.0.0",
     "ts-node": "^10.9.0",
