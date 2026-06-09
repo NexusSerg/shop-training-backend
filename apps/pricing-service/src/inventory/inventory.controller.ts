@@ -28,11 +28,11 @@ export class InventoryController {
   @ApiOperation({ summary: 'Get inventory for a specific product-seller pair' })
   @ApiParam({ name: 'productId', description: 'Product ID' })
   @ApiParam({ name: 'sellerId', description: 'Seller ID' })
-  getInventory(
+  async getInventory(
     @Param('productId') productId: string,
     @Param('sellerId') sellerId: string,
   ) {
-    const inventory = this.store.getInventory(productId, sellerId);
+    const inventory = await this.store.getInventory(productId, sellerId);
     if (!inventory) {
       throw new NotFoundException({ error: 'Inventory record not found', productId, sellerId });
     }
@@ -43,7 +43,7 @@ export class InventoryController {
   @ApiOperation({ summary: 'Update stock and/or status for a seller offer' })
   @ApiParam({ name: 'productId', description: 'Product ID' })
   @ApiParam({ name: 'sellerId', description: 'Seller ID' })
-  updateInventory(
+  async updateInventory(
     @Param('productId') productId: string,
     @Param('sellerId') sellerId: string,
     @Body() body: unknown,
@@ -62,7 +62,7 @@ export class InventoryController {
     if (stock !== undefined) updates.stock = stock;
     if (status !== undefined) updates.status = status;
 
-    const updated = this.store.updateInventory(productId, sellerId, updates);
+    const updated = await this.store.updateInventory(productId, sellerId, updates);
     if (!updated) {
       throw new NotFoundException({ error: 'Inventory record not found', productId, sellerId });
     }
