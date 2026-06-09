@@ -75,7 +75,7 @@ Each service restarts automatically on file changes.
 | Service | Port | Package |
 |---------|------|---------|
 | API Gateway | 3000 | `apps/api-gateway` ✅ Step 1.5 |
-| Search Service | 3001 | `apps/search-service` ✅ Step 1.2 |
+| Search Service | 3001 | `apps/search-service` ✅ Step 3.3 |
 | Catalog Service | 3002 | `apps/catalog-service` ✅ Step 3.1 |
 | Pricing Service | 3003 | `apps/pricing-service` ✅ Step 3.2 |
 | Autocomplete Service | 3004 | `apps/autocomplete-service` ✅ Step 1.4 |
@@ -466,6 +466,96 @@ curl "http://localhost:3001/api/v1/search/facets?q=phone" | jq '.facets.brands'
 ```
 
 > **Note:** The in-memory store resets on restart. Elasticsearch integration is planned for Step 3.3.
+
+---
+
+## Search Service (Step 3.3 — Elasticsearch)
+
+The search service on **port 3001** now uses **Elasticsearch** as its backing store when
+`ELASTICSEARCH_URL` is configured. It falls back to the in-memory mock store when the env
+var is absent or ES is unreachable — this keeps local dev and unit tests working without
+requiring a running Elasticsearch instance.
+
+### Elasticsearch index
+
+| Detail | Value |
+|--------|-------|
+| Index name | `products` |
+| Shards | 1 (single-node dev) |
+| Replicas | 0 |
+| Analyzer | `product_text` (standard + lowercase + asciifolding) |
+| Partial-match | `edge_ngram_analyzer` on `name.suggest` |
+| Autocomplete | ES completion suggester on `name_suggest` |
+
+### How the query is built
+
+| Feature | Implementation |
+|---------|----------------|
+| Full-text | `multi_match` across `name^3`, `name.suggest^2`, `brand^2`, `sku^2`, `description`, `category_path` |
+| Fuzziness | `AUTO` with `prefix_length: 2` |
+| Popularity boost | `function_score` with `field_value_factor` on `review_count` + Gaussian decay on `rating_avg` |
+| Filters | `bool.filter` context — brand terms, price range, rating, category, in_stock, attribute terms |
+| Facets | `terms` + `min`/`max` aggregations for brands, price, ratings, categories, color/size/material |
+| Highlighting | `name` (full) + `description` (snippet) with `<mark>` tags |
+
+### Environment variables (search service)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ELASTICSEARCH_URL` | _(not set)_ | ES node URL, e.g. `http://localhost:9200`. When absent the service uses the in-memory mock store. |
+| `PORT` | `3003` | Service listen port |
+
+### Indexing products into Elasticsearch
+
+Run the catalog-service seed first (Step 3.1), then index products into ES:
+
+```bash
+# Start ES
+docker compose -f infra/docker-compose.yml up -d elasticsearch
+
+# Quick dev seed (10,000 products — takes ~10s)
+DATABASE_URL=postgresql://shop:shop_secret@localhost:5432/shop_catalog \
+ELASTICSEARCH_URL=http://localhost:9200 \
+  pnpm --filter @shop/search-service es:index:dev
+
+# Full 1M product index (~5–15 min, CPU/network dependent)
+DATABASE_URL=postgresql://shop:shop_secret@localhost:5432/shop_catalog \
+ELASTICSEARCH_URL=http://localhost:9200 \
+  pnpm --filter @shop/search-service es:index
+
+# Force full re-index (deletes + recreates the index first)
+DATABASE_URL=postgresql://shop:shop_secret@localhost:5432/shop_catalog \
+ELASTICSEARCH_URL=http://localhost:9200 \
+  pnpm --filter @shop/search-service es:reindex
+```
+
+### Run the service with Elasticsearch
+
+```bash
+ELASTICSEARCH_URL=http://localhost:9200 \
+  pnpm --filter @shop/search-service dev
+```
+
+The health endpoint now reports which store is active:
+
+```bash
+curl http://localhost:3001/health | jq '{store}'
+# → { "store": "elasticsearch" }   # when ES is connected
+# → { "store": "mock" }            # fallback
+```
+
+### Quick test (with ES running)
+
+```bash
+# Full-text search hitting ES
+curl "http://localhost:3001/api/v1/search?q=laptop" | jq '.pagination.total'
+
+# Facets
+curl "http://localhost:3001/api/v1/search/facets?q=phone" | jq '.facets.brands[:3]'
+
+# All filters combined
+curl "http://localhost:3001/api/v1/search?q=laptop&brands=Dell,HP&price_min=300&price_max=1500&rating=4&sort=price_asc" | jq '.pagination'
+```
 
 ---
 
