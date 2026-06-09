@@ -77,7 +77,7 @@ Each service restarts automatically on file changes.
 | API Gateway | 3000 | `apps/api-gateway` ✅ Step 1.5 |
 | Search Service | 3001 | `apps/search-service` ✅ Step 1.2 |
 | Catalog Service | 3002 | `apps/catalog-service` ✅ Step 3.1 |
-| Pricing Service | 3003 | `apps/pricing-service` ✅ Step 1.3 |
+| Pricing Service | 3003 | `apps/pricing-service` ✅ Step 3.2 |
 | Autocomplete Service | 3004 | `apps/autocomplete-service` ✅ Step 1.4 |
 | Saved Search Service | 3005 | `apps/saved-search-service` |
 
@@ -469,9 +469,38 @@ curl "http://localhost:3001/api/v1/search/facets?q=phone" | jq '.facets.brands'
 
 ---
 
-## Pricing & Inventory Service (Step 1.3 — Mock-First)
+## Pricing & Inventory Service (Step 3.2 — Redis)
 
-The pricing service runs on **port 3003** and uses an in-memory store seeded with **100 deterministic mock products**, each with 1–3 seller offers (faker seed 42 — stable across restarts).
+The pricing service runs on **port 3003** and is backed by **Redis** via `ioredis`.
+Real-time price and inventory reads use Redis data structures; all writes are applied
+immediately to Redis (write-through pattern) so reads stay sub-millisecond.
+
+On startup the service seeds Redis with 100 deterministic mock products (faker seed 42)
+if the store is empty. The seed is idempotent — it only runs when Redis has no data.
+
+> **Redis integration replaces the previous in-memory mock store (Step 1.3).**
+> PostgreSQL persistence (source-of-truth for offers) is out of scope for this step.
+
+### Redis schema
+
+| Key pattern | Type | Contents |
+|-------------|------|----------|
+| `pricing:{productId}` | String | JSON — full `ProductPricing` object |
+| `inventory:{productId}:{sellerId}` | String | JSON — full `Inventory` object |
+| `seller_offers:{productId}` | Sorted Set | score = price, member = sellerId |
+| `pricing:product_ids` | Set | All known product IDs |
+
+Bulk pricing reads use `MGET` (single round-trip for up to 100 keys).
+Inventory updates use a Redis pipeline to atomically write the new inventory
+and the recomputed product-level pricing aggregate.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_HOST` | `localhost` | Redis hostname |
+| `REDIS_PORT` | `6379` | Redis port |
+| `PORT` | `3003` | Service listen port |
 
 ### Endpoints
 
@@ -483,20 +512,6 @@ The pricing service runs on **port 3003** and uses an in-memory store seeded wit
 | `GET` | `/api/v1/inventory/:productId/:sellerId` | Get stock details for a product-seller pair |
 | `PATCH` | `/api/v1/inventory/:productId/:sellerId` | Update stock count and/or status |
 
-### Bulk Pricing Request Body
-
-```json
-{ "productIds": ["p-mock-001", "p-mock-002", "..."] }
-```
-
-### Inventory PATCH Body
-
-```json
-{ "stock": 50, "status": "in_stock" }
-```
-
-Both fields are optional but at least one must be provided. If `status` is omitted it is derived automatically from the new `stock` value (0 → `out_of_stock`, < 10 → `low_stock`, ≥ 10 → `in_stock`). An inventory update also recomputes the product-level `priceMin`, `priceMax`, and `bestOffer`.
-
 ### Swagger UI
 
 Browse the interactive API docs at **http://localhost:3003/docs** while the service is running.
@@ -504,10 +519,11 @@ Browse the interactive API docs at **http://localhost:3003/docs** while the serv
 ### Quick test
 
 ```bash
-# Start the service
+# Start Redis (via docker compose) then the service
+docker compose -f infra/docker-compose.yml up -d redis
 pnpm --filter @shop/pricing-service dev
 
-# Get pricing for a single mock product
+# Get pricing for a single product (seeded on first start)
 curl http://localhost:3003/api/v1/pricing/p-mock-001 | jq '{priceMin,priceMax,sellerCount}'
 
 # Bulk-fetch 3 products
@@ -518,14 +534,12 @@ curl -X POST http://localhost:3003/api/v1/pricing/bulk \
 # Get inventory for a specific seller
 curl http://localhost:3003/api/v1/inventory/p-mock-001/s-001 | jq '{stock,available,status}'
 
-# Update stock for a seller offer
+# Update stock (write-through: updates Redis + recomputes pricing)
 curl -X PATCH http://localhost:3003/api/v1/inventory/p-mock-001/s-001 \
   -H 'Content-Type: application/json' \
   -d '{"stock":0}' | jq '.status'
 # → "out_of_stock"
 ```
-
-> **Note:** The in-memory store resets on restart. Redis + PostgreSQL integration is planned for Step 3.2.
 
 ---
 

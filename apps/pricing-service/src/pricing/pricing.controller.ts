@@ -28,14 +28,14 @@ export class PricingController {
   @Post('bulk')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Bulk-fetch pricing for multiple products' })
-  bulkPricing(@Body() body: unknown) {
+  async bulkPricing(@Body() body: unknown) {
     const parsed = BulkPricingBodySchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({ error: 'Validation failed', details: parsed.error.flatten() });
     }
 
     const start = Date.now();
-    const priceMap = this.store.getBulkPricing(parsed.data.productIds);
+    const priceMap = await this.store.getBulkPricing(parsed.data.productIds);
     const took = Date.now() - start;
 
     return { data: priceMap, count: Object.keys(priceMap).length, took };
@@ -44,8 +44,8 @@ export class PricingController {
   @Get(':productId')
   @ApiOperation({ summary: 'Get pricing and seller offers for a product' })
   @ApiParam({ name: 'productId', description: 'Product ID' })
-  getPricing(@Param('productId') productId: string) {
-    const pricing = this.store.getPricing(productId);
+  async getPricing(@Param('productId') productId: string) {
+    const pricing = await this.store.getPricing(productId);
     if (!pricing) {
       throw new NotFoundException({ error: 'Product not found', productId });
     }

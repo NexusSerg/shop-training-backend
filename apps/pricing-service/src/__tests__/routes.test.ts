@@ -2,8 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+// @ts-expect-error ioredis-mock has no type declarations bundled; types come from ioredis
+import RedisMock from 'ioredis-mock';
 import { AppModule } from '../app.module';
 import { PricingStoreService } from '../pricing-store/pricing-store.service';
+import { REDIS_CLIENT } from '../redis/redis.module';
 import { setupSwagger } from '../swagger';
 import { seedPricingData } from '../mock/seed';
 
@@ -15,14 +18,18 @@ describe('Pricing Service routes', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      // Replace the real ioredis client with an in-memory mock for tests
+      .overrideProvider(REDIS_CLIENT)
+      .useValue(new RedisMock())
+      .compile();
 
     app = module.createNestApplication();
     setupSwagger(app);
     await app.init();
 
     store = module.get(PricingStoreService);
-    const allIds = store.getAllProductIds();
+    const allIds = await store.getAllProductIds();
     const id = allIds[0];
     if (!id) throw new Error('No seeded pricing data found');
     firstId = id;
@@ -73,7 +80,7 @@ describe('Pricing Service routes', () => {
   // ---------------------------------------------------------------------------
 
   it('POST /api/v1/pricing/bulk → returns pricing for all known IDs', async () => {
-    const ids = store.getAllProductIds().slice(0, 10);
+    const ids = (await store.getAllProductIds()).slice(0, 10);
     const res = await request(app.getHttpServer())
       .post('/api/v1/pricing/bulk')
       .send({ productIds: ids })
@@ -107,7 +114,7 @@ describe('Pricing Service routes', () => {
   });
 
   it('POST /api/v1/pricing/bulk → 100 products returns in <50ms', async () => {
-    const ids = store.getAllProductIds().slice(0, 100);
+    const ids = (await store.getAllProductIds()).slice(0, 100);
     const start = Date.now();
     const res = await request(app.getHttpServer())
       .post('/api/v1/pricing/bulk')
@@ -123,7 +130,7 @@ describe('Pricing Service routes', () => {
   // ---------------------------------------------------------------------------
 
   it('GET /api/v1/inventory/:productId/:sellerId → 200 for existing record', async () => {
-    const pricing = store.getPricing(firstId);
+    const pricing = await store.getPricing(firstId);
     if (!pricing || pricing.offers.length === 0) throw new Error('No offers for first product');
     const sellerId = pricing.offers[0]?.sellerId;
     if (!sellerId) throw new Error('No sellerId');
@@ -151,7 +158,7 @@ describe('Pricing Service routes', () => {
   // ---------------------------------------------------------------------------
 
   it('PATCH /api/v1/inventory/:productId/:sellerId → updates stock', async () => {
-    const pricing = store.getPricing(firstId);
+    const pricing = await store.getPricing(firstId);
     if (!pricing || pricing.offers.length === 0) throw new Error('No offers for first product');
     const sellerId = pricing.offers[0]?.sellerId;
     if (!sellerId) throw new Error('No sellerId');
@@ -165,7 +172,7 @@ describe('Pricing Service routes', () => {
   });
 
   it('PATCH /api/v1/inventory/:productId/:sellerId → stock=0 derives out_of_stock', async () => {
-    const pricing = store.getPricing(firstId);
+    const pricing = await store.getPricing(firstId);
     if (!pricing || pricing.offers.length === 0) throw new Error('No offers');
     const sellerId = pricing.offers[0]?.sellerId;
     if (!sellerId) throw new Error('No sellerId');
@@ -180,7 +187,7 @@ describe('Pricing Service routes', () => {
   });
 
   it('PATCH /api/v1/inventory/:productId/:sellerId → 400 when body is empty', async () => {
-    const pricing = store.getPricing(firstId);
+    const pricing = await store.getPricing(firstId);
     const sellerId = pricing?.offers[0]?.sellerId ?? 's-001';
     await request(app.getHttpServer())
       .patch(`/api/v1/inventory/${firstId}/${sellerId}`)
