@@ -28,7 +28,7 @@ export class SearchStoreService implements OnModuleInit {
 
     try {
       const client = new Client({ node: esUrl });
-      await client.ping();
+      await client.info();
       await ensureProductsIndex(client);
       this.esStore = new ElasticsearchSearchStore(client);
       this.logger.log(`Connected to Elasticsearch at ${esUrl} — using ES search store.`);

@@ -103,7 +103,7 @@ export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const client = new Client({ node: esUrl });
-      await client.ping();
+      await client.info();
       this.esStore = new EsAutocompleteStore(client);
       this.logger.log(`Connected to Elasticsearch at ${esUrl} — product suggestions use ES.`);
     } catch (err) {
