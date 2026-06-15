@@ -9,16 +9,16 @@ const TYPE_PRIORITY: Record<Suggestion['type'], number> = {
 };
 
 /**
- * In-memory autocomplete store backed by a static suggestion list.
+ * In-memory autocomplete store used exclusively for unit/integration tests.
  *
  * Matching strategy:
  *   1. Case-insensitive prefix match on suggestion text.
  *   2. Results sorted by type priority (product > brand > category > query)
  *      then by descending score within each type.
  *
- * In Phase 3.4 this class is replaced by:
- *   - Redis Sorted Sets for popular query frequency ranking
- *   - Elasticsearch completion suggester for product-name matching
+ * The production service (AutocompleteStoreService) does not use this class —
+ * it queries Elasticsearch for products, Redis for queries, and src/data/ for
+ * brands and categories directly.
  */
 export class AutocompleteStore {
   private readonly suggestions: Suggestion[];

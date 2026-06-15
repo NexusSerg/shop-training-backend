@@ -1,16 +1,16 @@
 /**
  * AutocompleteStoreService — Step 3.4
  *
- * Hybrid autocomplete that merges results from three sources:
+ * Hybrid autocomplete merging results from three sources:
  *
  *  • Elasticsearch  — product-name suggestions via completion suggester
  *  • Redis          — popular query suggestions via sorted set frequency ranking
- *  • Mock store     — brand + category suggestions (static, always included)
- *                     also used as full fallback when ES and Redis are unavailable
+ *  • Static data    — brand + category suggestions (always included; no external store needed)
  *
- * Falls back gracefully to the in-memory mock store when
- *  - REDIS_HOST / REDIS_PORT are not set, or Redis is unreachable
- *  - ELASTICSEARCH_URL is not set, or ES is unreachable
+ * Graceful degradation:
+ *  - ES unavailable  → product suggestions are omitted (no fake data served)
+ *  - Redis unavailable → query suggestions are omitted (no fake data served)
+ *  - Both unavailable → only brand + category static suggestions are returned
  */
 
 import {
@@ -25,10 +25,11 @@ import { Client } from '@elastic/elasticsearch';
 import type { Redis } from 'ioredis';
 import type { Suggestion } from '@shop/shared-types';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { AutocompleteStore } from '../mock/store';
-import { STATIC_SUGGESTIONS } from '../mock/suggestions';
 import { RedisAutocompleteStore } from '../redis/redis-autocomplete-store';
 import { EsAutocompleteStore } from '../elasticsearch/es-autocomplete-store';
+import { STATIC_BRAND_CATEGORY } from '../data/brand-category.data';
+import { QUERY_SEED_DATA } from '../data/query-seed.data';
+import { filterByPrefix } from '../data/prefix-match';
 
 const TYPE_PRIORITY: Record<Suggestion['type'], number> = {
   product: 4,
@@ -37,10 +38,14 @@ const TYPE_PRIORITY: Record<Suggestion['type'], number> = {
   query: 1,
 };
 
+// Pre-sorted once at module load time
+const SORTED_BRAND_CATEGORY = [...STATIC_BRAND_CATEGORY].sort(
+  (a, b) => b.score - a.score,
+);
+
 @Injectable()
 export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AutocompleteStoreService.name);
-  private readonly mockStore = new AutocompleteStore();
   private redisStore: RedisAutocompleteStore | null = null;
   private esStore: EsAutocompleteStore | null = null;
 
@@ -63,7 +68,7 @@ export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
 
   private async initRedis(): Promise<void> {
     if (!this.redis) {
-      this.logger.log('Redis client not available — popular-query suggestions use mock store.');
+      this.logger.log('Redis client not available — query suggestions will be omitted.');
       return;
     }
 
@@ -72,12 +77,9 @@ export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
       this.redisStore = new RedisAutocompleteStore(this.redis);
 
       if (await this.redisStore.isEmpty()) {
-        this.logger.log('Redis autocomplete store empty — seeding from static suggestions…');
-        const queries = STATIC_SUGGESTIONS
-          .filter((s) => s.type === 'query')
-          .map((s) => ({ text: s.text, score: s.score }));
-        await this.redisStore.seed(queries);
-        this.logger.log(`Seeded ${queries.length} popular queries into Redis.`);
+        this.logger.log('Redis autocomplete store empty — seeding popular queries…');
+        await this.redisStore.seed(QUERY_SEED_DATA);
+        this.logger.log(`Seeded ${QUERY_SEED_DATA.length} popular queries into Redis.`);
       } else {
         this.logger.log('Redis autocomplete store already seeded — skipping seed.');
       }
@@ -85,7 +87,7 @@ export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
       this.logger.log('Redis autocomplete store ready.');
     } catch (err) {
       this.logger.warn(
-        `Redis unavailable — falling back to mock for query suggestions. ` +
+        `Redis unavailable — query suggestions will be omitted. ` +
           `Error: ${(err as Error).message}`,
       );
       this.redisStore = null;
@@ -95,7 +97,7 @@ export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
   private async initElasticsearch(): Promise<void> {
     const esUrl = process.env['ELASTICSEARCH_URL'];
     if (!esUrl) {
-      this.logger.log('ELASTICSEARCH_URL not set — product suggestions use mock store.');
+      this.logger.log('ELASTICSEARCH_URL not set — product suggestions will be omitted.');
       return;
     }
 
@@ -106,7 +108,7 @@ export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Connected to Elasticsearch at ${esUrl} — product suggestions use ES.`);
     } catch (err) {
       this.logger.warn(
-        `Elasticsearch unavailable — falling back to mock for product suggestions. ` +
+        `Elasticsearch unavailable — product suggestions will be omitted. ` +
           `Error: ${(err as Error).message}`,
       );
       this.esStore = null;
@@ -117,25 +119,24 @@ export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Return up to `limit` suggestions for the given prefix.
-   * Merges products (ES/mock), queries (Redis/mock), brands (mock), categories (mock).
-   * Results are ranked by type priority then score.
+   *
+   * Sources (merged and deduped):
+   *   1. Product names  — Elasticsearch completion suggester (omitted if ES is down)
+   *   2. Popular queries — Redis sorted set by frequency (omitted if Redis is down)
+   *   3. Brands/categories — static data (always present)
+   *
+   * Results are sorted: type priority (product > brand > category > query) then score.
    */
   async getSuggestions(prefix: string, limit: number): Promise<Suggestion[]> {
-    const useMockFully = !this.redisStore && !this.esStore;
-    if (useMockFully) {
-      return this.mockStore.getSuggestions(prefix, limit);
-    }
-
-    // Gather from each source in parallel
-    const [products, queries, staticSuggestions] = await Promise.all([
+    const [products, queries] = await Promise.all([
       this.getProductSuggestions(prefix, limit),
       this.getQuerySuggestions(prefix, limit),
-      Promise.resolve(this.getStaticSuggestions(prefix)),
     ]);
 
-    const merged = [...products, ...queries, ...staticSuggestions];
+    const brandCategory = filterByPrefix(SORTED_BRAND_CATEGORY, prefix, limit);
+    const merged = [...products, ...queries, ...brandCategory];
 
-    // Deduplicate by lowercased text, keeping the higher-priority entry
+    // Deduplicate by lowercased text
     const seen = new Set<string>();
     const deduped: Suggestion[] = [];
     for (const s of merged) {
@@ -146,7 +147,6 @@ export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // Sort: type priority desc, then score desc
     deduped.sort((a, b) => {
       const typeDiff = TYPE_PRIORITY[b.type] - TYPE_PRIORITY[a.type];
       return typeDiff !== 0 ? typeDiff : b.score - a.score;
@@ -164,50 +164,33 @@ export class AutocompleteStoreService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Which backends are active — used for health reporting. */
-  get storeType(): 'hybrid' | 'redis' | 'elasticsearch' | 'mock' {
+  get storeType(): 'hybrid' | 'redis' | 'elasticsearch' | 'static' {
     if (this.redisStore && this.esStore) return 'hybrid';
     if (this.redisStore) return 'redis';
     if (this.esStore) return 'elasticsearch';
-    return 'mock';
+    return 'static';
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
   private async getProductSuggestions(prefix: string, limit: number): Promise<Suggestion[]> {
-    if (this.esStore) {
-      try {
-        return await this.esStore.getSuggestions(prefix, limit);
-      } catch (err) {
-        this.logger.warn(`ES suggestion query failed: ${(err as Error).message}`);
-      }
+    if (!this.esStore) return [];
+    try {
+      return await this.esStore.getSuggestions(prefix, limit);
+    } catch (err) {
+      this.logger.warn(`ES suggestion query failed: ${(err as Error).message}`);
+      return [];
     }
-    // Fallback: product suggestions from mock store
-    return this.mockStore
-      .getSuggestions(prefix, limit * 2)
-      .filter((s) => s.type === 'product')
-      .slice(0, limit);
   }
 
   private async getQuerySuggestions(prefix: string, limit: number): Promise<Suggestion[]> {
-    if (this.redisStore) {
-      try {
-        return await this.redisStore.getSuggestions(prefix, limit);
-      } catch (err) {
-        this.logger.warn(`Redis suggestion query failed: ${(err as Error).message}`);
-      }
+    if (!this.redisStore) return [];
+    try {
+      return await this.redisStore.getSuggestions(prefix, limit);
+    } catch (err) {
+      this.logger.warn(`Redis suggestion query failed: ${(err as Error).message}`);
+      return [];
     }
-    // Fallback: query suggestions from mock store
-    return this.mockStore
-      .getSuggestions(prefix, limit * 2)
-      .filter((s) => s.type === 'query')
-      .slice(0, limit);
-  }
-
-  /** Brand + category suggestions always come from the static mock store. */
-  private getStaticSuggestions(prefix: string): Suggestion[] {
-    return this.mockStore
-      .getSuggestions(prefix, 40)
-      .filter((s) => s.type === 'brand' || s.type === 'category');
   }
 }
 
