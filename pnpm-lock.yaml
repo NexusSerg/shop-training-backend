@@ -87,6 +87,9 @@ importers:
 
   apps/autocomplete-service:
     dependencies:
+      '@elastic/elasticsearch':
+        specifier: ^9.4.2
+        version: 9.4.2
       '@nestjs/common':
         specifier: ^10.0.0
         version: 10.4.22(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -105,6 +108,9 @@ importers:
       '@shop/shared-utils':
         specifier: workspace:*
         version: link:../../packages/shared-utils
+      ioredis:
+        specifier: ^5.4.0
+        version: 5.11.1
       reflect-metadata:
         specifier: ^0.2.0
         version: 0.2.2
@@ -130,6 +136,9 @@ importers:
       '@types/supertest':
         specifier: ^6.0.0
         version: 6.0.3
+      ioredis-mock:
+        specifier: ^8.9.0
+        version: 8.13.1(@types/ioredis-mock@8.2.7(ioredis@5.11.1))(ioredis@5.11.1)
       supertest:
         specifier: ^7.0.0
         version: 7.2.2

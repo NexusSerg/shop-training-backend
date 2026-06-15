@@ -2,9 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+// @ts-expect-error ioredis-mock has no type declarations bundled; types come from ioredis
+import RedisMock from 'ioredis-mock';
 import type { AutocompleteResponse } from '@shop/shared-types';
 import { AppModule } from '../app.module';
 import { AutocompleteStore } from '../mock/store';
+import { REDIS_CLIENT } from '../redis/redis.module';
 import { setupSwagger } from '../swagger';
 
 describe('Autocomplete Service routes', () => {
@@ -13,7 +16,11 @@ describe('Autocomplete Service routes', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      // Replace the real ioredis client with an in-memory mock for tests
+      .overrideProvider(REDIS_CLIENT)
+      .useValue(new RedisMock())
+      .compile();
 
     app = module.createNestApplication();
     setupSwagger(app);
