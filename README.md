@@ -78,7 +78,7 @@ Each service restarts automatically on file changes.
 | Search Service | 3001 | `apps/search-service` ✅ Step 3.3 |
 | Catalog Service | 3002 | `apps/catalog-service` ✅ Step 3.1 |
 | Pricing Service | 3003 | `apps/pricing-service` ✅ Step 3.2 |
-| Autocomplete Service | 3004 | `apps/autocomplete-service` ✅ Step 1.4 |
+| Autocomplete Service | 3004 | `apps/autocomplete-service` ✅ Step 3.4 |
 | Saved Search Service | 3005 | `apps/saved-search-service` |
 
 Infrastructure:
@@ -633,15 +633,58 @@ curl -X PATCH http://localhost:3003/api/v1/inventory/p-mock-001/s-001 \
 
 ---
 
-## Autocomplete Service (Step 1.4 — Mock-First)
+## Autocomplete Service (Step 3.4 — Redis + Elasticsearch)
 
-The autocomplete service runs on **port 3004** and returns ranked suggestions from a static in-memory list covering queries, brands, categories, and product names.
+The autocomplete service runs on **port 3004** and uses a **hybrid backend** combining:
+
+| Source | Suggestion type | Backing store |
+|--------|----------------|---------------|
+| Elasticsearch completion suggester | `product` | `name_suggest` completion field in the products index |
+| Redis Sorted Set (frequency ranking) | `query` | `autocomplete:popular` + `autocomplete:queries` |
+| Static mock store | `brand`, `category` | Always included; also used as full fallback |
+
+When neither `ELASTICSEARCH_URL` nor `REDIS_HOST` are configured the service falls back to the
+static in-memory mock store — this keeps local dev and unit tests working without any infrastructure.
+
+### Redis schema
+
+| Key | Type | Contents |
+|-----|------|----------|
+| `autocomplete:popular` | Sorted Set | score = frequency/popularity, member = query text |
+| `autocomplete:queries` | Sorted Set | score = 0, member = query text (lex set for prefix matching) |
+
+On startup the service seeds `autocomplete:popular` + `autocomplete:queries` with the static
+suggestion list if both sets are empty (idempotent).
+
+### Query frequency tracking
+
+Call `AutocompleteStoreService.recordQuery(query)` after a user completes a search to increment the
+query's score in Redis. The next autocomplete request will reflect the updated popularity ranking.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_HOST` | `localhost` | Redis hostname |
+| `REDIS_PORT` | `6379` | Redis port |
+| `ELASTICSEARCH_URL` | _(not set)_ | ES node URL, e.g. `http://localhost:9200`. When absent the service uses mock product suggestions. |
+| `PORT` | `3004` | Service listen port |
+
+### Health endpoint
+
+```bash
+curl http://localhost:3004/health | jq '{store}'
+# → { "store": "hybrid" }          # Redis + ES both connected
+# → { "store": "redis" }           # Redis only
+# → { "store": "elasticsearch" }   # ES only
+# → { "store": "mock" }            # full static fallback
+```
 
 ### Endpoint
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Health check (includes `store` field) |
 | `GET` | `/api/v1/autocomplete` | Get search suggestions for a given prefix |
 
 ### Query Parameters — `GET /api/v1/autocomplete`
@@ -652,24 +695,6 @@ The autocomplete service runs on **port 3004** and returns ranked suggestions fr
 | `limit` | `1–20` | `10` | Maximum number of suggestions to return |
 | `type` | `query\|product\|brand\|category` | — | Restrict results to a single suggestion type |
 
-### Suggestion Types & Ranking
-
-Results are ranked first by **type priority** (product > brand > category > query) then by **popularity score** within each type. A `type` query parameter restricts results to a single kind.
-
-### Response Shape
-
-```json
-{
-  "suggestions": [
-    { "text": "Apple MacBook Pro 14", "type": "product", "score": 95,
-      "payload": { "productId": "p-mock-apple-macbook-pro", "slug": "apple-macbook-pro-14" } },
-    { "text": "Apple", "type": "brand", "score": 100 },
-    { "text": "apple iphone", "type": "query", "score": 90 }
-  ],
-  "took": 0
-}
-```
-
 ### Swagger UI
 
 Browse the interactive API docs at **http://localhost:3004/docs** while the service is running.
@@ -677,24 +702,28 @@ Browse the interactive API docs at **http://localhost:3004/docs** while the serv
 ### Quick test
 
 ```bash
-# Start the service
-pnpm --filter @shop/autocomplete-service dev
+# Start Redis and (optionally) Elasticsearch
+docker compose -f infra/docker-compose.yml up -d redis elasticsearch
 
-# Prefix search — "lap" → laptop suggestions
+# Start the service with both backends enabled
+ELASTICSEARCH_URL=http://localhost:9200 \
+  pnpm --filter @shop/autocomplete-service dev
+
+# Prefix search — "lap" → laptop suggestions (queries from Redis + products from ES)
 curl "http://localhost:3004/api/v1/autocomplete?q=lap" | jq '.suggestions[].text'
 
-# Brand-only suggestions for "sam"
+# Brand-only suggestions
 curl "http://localhost:3004/api/v1/autocomplete?q=sam&type=brand" | jq '.'
 
-# Top 5 suggestions with no prefix
-curl "http://localhost:3004/api/v1/autocomplete?limit=5" | jq '.suggestions[].text'
+# Top 5 popular queries
+curl "http://localhost:3004/api/v1/autocomplete?limit=5&type=query" | jq '.suggestions[].text'
 
-# Empty prefix — returns global top suggestions
-curl "http://localhost:3004/api/v1/autocomplete" | jq '.suggestions | length'
+# Check active backend
+curl http://localhost:3004/health | jq '{store}'
 ```
 
-> **Note:** The mock suggestion list is static and resets on restart.
-> In Step 3.4 suggestions will be backed by Redis Sorted Sets (popular queries) and the Elasticsearch completion suggester (product names).
+> **Note:** Product suggestions from Elasticsearch require the products index to be populated first.
+> Run `pnpm --filter @shop/search-service es:index:dev` (Step 3.3) before starting the autocomplete service.
 
 ---
 

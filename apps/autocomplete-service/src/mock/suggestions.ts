@@ -1,87 +1,26 @@
 import type { Suggestion } from '@shop/shared-types';
+import { STATIC_BRAND_CATEGORY } from '../data/brand-category.data';
+import { QUERY_SEED_DATA } from '../data/query-seed.data';
 
 /**
- * Static suggestion seed data.
- * In Phase 3.4 this is replaced by:
- *   - Redis Sorted Sets for popular query suggestions
- *   - Elasticsearch completion suggester for product-name suggestions
+ * Combined suggestion list used by the mock store in tests.
+ *
+ * Brand/category data is imported from src/data/ (the production source of truth).
+ * Query suggestions are derived from the Redis seed data.
+ * Product entries are test-only fixtures that stand in for Elasticsearch results.
  */
 export const STATIC_SUGGESTIONS: Suggestion[] = [
-  // --- popular search queries ---
-  { text: 'laptop', type: 'query', score: 100 },
-  { text: 'laptop gaming', type: 'query', score: 95 },
-  { text: 'laptop stand', type: 'query', score: 88 },
-  { text: 'laptop bag', type: 'query', score: 82 },
-  { text: 'laptop charger', type: 'query', score: 76 },
-  { text: 'laptop cooling pad', type: 'query', score: 70 },
-  { text: 'iphone', type: 'query', score: 99 },
-  { text: 'iphone case', type: 'query', score: 90 },
-  { text: 'iphone charger', type: 'query', score: 84 },
-  { text: 'iphone screen protector', type: 'query', score: 75 },
-  { text: 'headphones', type: 'query', score: 97 },
-  { text: 'headphones wireless', type: 'query', score: 91 },
-  { text: 'headphones bluetooth', type: 'query', score: 87 },
-  { text: 'headphones noise cancelling', type: 'query', score: 80 },
-  { text: 'running shoes', type: 'query', score: 93 },
-  { text: 'running shoes women', type: 'query', score: 85 },
-  { text: 'running shoes men', type: 'query', score: 83 },
-  { text: 'smartwatch', type: 'query', score: 96 },
-  { text: 'smartwatch apple', type: 'query', score: 89 },
-  { text: 'smartwatch samsung', type: 'query', score: 83 },
-  { text: 'monitor', type: 'query', score: 92 },
-  { text: 'monitor 4k', type: 'query', score: 86 },
-  { text: 'monitor ultrawide', type: 'query', score: 79 },
-  { text: 'keyboard mechanical', type: 'query', score: 88 },
-  { text: 'keyboard wireless', type: 'query', score: 82 },
-  { text: 'mouse gaming', type: 'query', score: 87 },
-  { text: 'mouse wireless', type: 'query', score: 81 },
-  { text: 'tablet', type: 'query', score: 94 },
-  { text: 'tablet ipad', type: 'query', score: 89 },
-  { text: 'tablet samsung', type: 'query', score: 82 },
-  { text: 'speaker bluetooth', type: 'query', score: 91 },
-  { text: 'camera dslr', type: 'query', score: 85 },
-  { text: 'camera mirrorless', type: 'query', score: 80 },
-  { text: 'tv 4k', type: 'query', score: 90 },
-  { text: 'tv samsung 55 inch', type: 'query', score: 82 },
-  { text: 'phone samsung', type: 'query', score: 88 },
-  { text: 'phone case', type: 'query', score: 84 },
-  { text: 'sneakers nike', type: 'query', score: 91 },
-  { text: 'sneakers adidas', type: 'query', score: 88 },
-  { text: 't-shirt cotton', type: 'query', score: 75 },
+  // --- popular search queries (from Redis seed data) ---
+  ...QUERY_SEED_DATA.map(({ text, score }) => ({
+    text,
+    type: 'query' as const,
+    score,
+  })),
 
-  // --- brand suggestions ---
-  { text: 'Apple', type: 'brand', score: 100 },
-  { text: 'Samsung', type: 'brand', score: 98 },
-  { text: 'Sony', type: 'brand', score: 95 },
-  { text: 'Nike', type: 'brand', score: 94 },
-  { text: 'Adidas', type: 'brand', score: 92 },
-  { text: 'Dell', type: 'brand', score: 91 },
-  { text: 'HP', type: 'brand', score: 90 },
-  { text: 'LG', type: 'brand', score: 88 },
-  { text: 'Bose', type: 'brand', score: 87 },
-  { text: 'Philips', type: 'brand', score: 85 },
-  { text: 'Reebok', type: 'brand', score: 84 },
-  { text: 'Under Armour', type: 'brand', score: 82 },
-  { text: 'Panasonic', type: 'brand', score: 80 },
-  { text: 'Lenovo', type: 'brand', score: 88 },
-  { text: 'ASUS', type: 'brand', score: 86 },
+  // --- brands and categories (from production data) ---
+  ...STATIC_BRAND_CATEGORY,
 
-  // --- category suggestions ---
-  { text: 'Electronics', type: 'category', score: 100 },
-  { text: 'Laptops', type: 'category', score: 95 },
-  { text: 'Smartphones', type: 'category', score: 94 },
-  { text: 'Headphones', type: 'category', score: 90 },
-  { text: 'Tablets', type: 'category', score: 88 },
-  { text: 'Cameras', type: 'category', score: 85 },
-  { text: 'Smart Watches', type: 'category', score: 84 },
-  { text: 'Monitors', type: 'category', score: 82 },
-  { text: 'Keyboards', type: 'category', score: 80 },
-  { text: 'Clothing', type: 'category', score: 78 },
-  { text: 'Footwear', type: 'category', score: 77 },
-  { text: 'Sports & Outdoors', type: 'category', score: 76 },
-  { text: 'Home & Garden', type: 'category', score: 75 },
-  { text: 'Gaming', type: 'category', score: 89 },
-  { text: 'Gaming Accessories', type: 'category', score: 83 },
+  // --- product fixtures (test-only stand-ins for Elasticsearch results) ---
 
   // --- product suggestions (representative samples) ---
   {

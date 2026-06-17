@@ -1,4 +1,8 @@
 import 'reflect-metadata';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+// Load .env from workspace root
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';

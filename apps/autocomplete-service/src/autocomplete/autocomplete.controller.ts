@@ -27,11 +27,11 @@ export class AutocompleteController {
   @ApiQuery({ name: 'q', required: false, description: 'Search prefix' })
   @ApiQuery({ name: 'limit', required: false, description: `Number of suggestions (1-${MAX_LIMIT}, default ${DEFAULT_LIMIT})` })
   @ApiQuery({ name: 'type', required: false, enum: ['query', 'product', 'brand', 'category'], description: 'Filter by suggestion type' })
-  getSuggestions(
+  async getSuggestions(
     @Query('q') q?: string,
     @Query('limit') limit?: string,
     @Query('type') type?: string,
-  ): AutocompleteResponse {
+  ): Promise<AutocompleteResponse> {
     const parsed = QuerySchema.safeParse({ q, limit, type });
     if (!parsed.success) {
       throw new BadRequestException({ error: 'Validation failed', details: parsed.error.flatten() });
@@ -42,7 +42,7 @@ export class AutocompleteController {
 
     // Fetch more than requested when type filtering so we can still return `limit` results
     const fetchLimit = suggestionType ? MAX_LIMIT : parsedLimit;
-    let suggestions = this.store.getSuggestions(prefix ?? '', fetchLimit);
+    let suggestions = await this.store.getSuggestions(prefix ?? '', fetchLimit);
 
     if (suggestionType) {
       suggestions = suggestions.filter((s) => s.type === suggestionType).slice(0, parsedLimit);
@@ -51,3 +51,4 @@ export class AutocompleteController {
     return { suggestions, took: Date.now() - start };
   }
 }
+

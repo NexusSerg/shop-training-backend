@@ -45,6 +45,16 @@ export const PRODUCTS_INDEX_CONFIG = {
   },
   mappings: {
     dynamic: false as const,
+    // Map all string fields inside `attributes` as keyword so they can be used
+    // in terms aggregations (facets) and filters without enabling fielddata.
+    dynamic_templates: [
+      {
+        attributes_as_keyword: {
+          path_match: 'attributes.*',
+          mapping: { type: 'keyword' as const },
+        },
+      },
+    ],
     properties: {
       // ── Identity ──────────────────────────────────────────────────────────
       product_id: { type: 'keyword' as const },

@@ -71,9 +71,9 @@ export class SearchController {
   @Get('facets')
   @ApiOperation({ summary: 'Get facets for a text query' })
   @ApiQuery({ name: 'q', required: false, description: 'Full-text search query' })
-  getFacets(@Query('q') q?: string) {
+  async getFacets(@Query('q') q?: string) {
     const start = Date.now();
-    const facets = this.store.getFacets(q ?? '');
+    const facets = await this.store.getFacets(q ?? '');
     return { facets, took: Date.now() - start, query: q ?? '' };
   }
 

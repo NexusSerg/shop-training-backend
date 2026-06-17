@@ -125,7 +125,7 @@ async function main() {
   console.log('[index-products] PostgreSQL connected.');
 
   const es = new EsClient({ node: ELASTICSEARCH_URL });
-  await es.ping();
+  await es.info();
   console.log('[index-products] Elasticsearch connected.');
 
   // ── Index setup ──────────────────────────────────────────────────────────
