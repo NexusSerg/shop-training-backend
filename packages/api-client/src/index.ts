@@ -54,7 +54,6 @@ export class CatalogClient {
         const body = await res.text().catch(() => '');
         throw new CatalogApiError(res.status, body || res.statusText);
       }
-
       return res.json() as Promise<T>;
     } finally {
       clearTimeout(id);

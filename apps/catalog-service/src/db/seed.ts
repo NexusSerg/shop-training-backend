@@ -52,6 +52,10 @@ const STATUS_POOL = [
   ...Array(5).fill('draft'),
 ] as Array<'active' | 'inactive' | 'draft'>;
 
+// Fixed pool of sellers reused across all batches
+const N_SELLERS = 50;
+const SELLER_IDS: string[] = [];
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -66,6 +70,28 @@ function slugify(text: string): string {
 // ---------------------------------------------------------------------------
 // Category seeding
 // ---------------------------------------------------------------------------
+
+async function seedSellers(client: Client): Promise<void> {
+  console.log('[seed] Upserting sellers…');
+  // Deterministic seller IDs so re-runs are idempotent
+  faker.seed(1);
+  for (let i = 0; i < N_SELLERS; i++) {
+    SELLER_IDS.push(faker.string.uuid());
+  }
+  faker.seed(42); // restore main seed
+
+  await client.query(
+    `INSERT INTO sellers (id, name, status)
+     SELECT unnest($1::uuid[]), unnest($2::text[]), unnest($3::text[]::\"SellerStatus\"[])
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      SELLER_IDS,
+      SELLER_IDS.map((_, i) => `Seller ${i + 1}`),
+      SELLER_IDS.map(() => 'active'),
+    ],
+  );
+  console.log(`[seed] ${N_SELLERS} sellers ready.`);
+}
 
 async function seedCategories(client: Client): Promise<void> {
   console.log('[seed] Upserting categories…');
@@ -121,6 +147,13 @@ interface BatchData {
   imgWidths: number[];
   imgHeights: number[];
   imgIsPrimary: boolean[];
+  // seller offers (flattened)
+  offerIds: string[];
+  offerProductIds: string[];
+  offerSellerIds: string[];
+  offerPrices: string[];
+  offerOriginalPrices: string[];
+  offerStocks: number[];
 }
 
 function generateBatch(count: number, batchIndex: number): BatchData {
@@ -132,6 +165,8 @@ function generateBatch(count: number, batchIndex: number): BatchData {
     attrFilterables: [], attrSearchables: [],
     imgProductIds: [], imgUrls: [], imgAltTexts: [], imgWidths: [],
     imgHeights: [], imgIsPrimary: [],
+    offerIds: [], offerProductIds: [], offerSellerIds: [],
+    offerPrices: [], offerOriginalPrices: [], offerStocks: [],
   };
 
   for (let i = 0; i < count; i++) {
@@ -183,6 +218,34 @@ function generateBatch(count: number, batchIndex: number): BatchData {
     d.imgWidths.push(800);
     d.imgHeights.push(600);
     d.imgIsPrimary.push(true);
+
+    // Seller offers: 1–3 sellers per product (only for active products)
+    if (status === 'active' && SELLER_IDS.length > 0) {
+      const offerCount = faker.number.int({ min: 1, max: 3 });
+      const usedSellers = new Set<string>();
+      for (let o = 0; o < offerCount; o++) {
+        let sellerId: string;
+        // Pick a seller not already used for this product
+        do {
+          sellerId = SELLER_IDS[faker.number.int({ min: 0, max: SELLER_IDS.length - 1 })] as string;
+        } while (usedSellers.has(sellerId));
+        usedSellers.add(sellerId);
+
+        const price = parseFloat(faker.commerce.price({ min: 5, max: 2000, dec: 2 }));
+        // original price is 0–30% higher than current price
+        const originalPrice = faker.datatype.boolean(0.4)
+          ? parseFloat((price * (1 + faker.number.float({ min: 0.05, max: 0.3 }))).toFixed(2))
+          : price;
+        const stock = faker.number.int({ min: 0, max: 500 });
+
+        d.offerIds.push(faker.string.uuid());
+        d.offerProductIds.push(id);
+        d.offerSellerIds.push(sellerId);
+        d.offerPrices.push(price.toFixed(2));
+        d.offerOriginalPrices.push(originalPrice.toFixed(2));
+        d.offerStocks.push(stock);
+      }
+    }
   }
 
   return d;
@@ -212,7 +275,7 @@ async function bulkInsertProducts(client: Client, d: BatchData): Promise<void> {
        unnest($10::text[]),
        unnest($11::timestamptz[]),
        unnest($12::timestamptz[])
-     ON CONFLICT (sku) DO NOTHING`,
+     ON CONFLICT DO NOTHING`,
     [
       d.productIds, d.skus, d.names, d.descriptions, d.brands, d.slugs,
       d.statuses, d.primaryCategoryIds, d.metaTitles, d.metaDescriptions,
@@ -257,6 +320,27 @@ async function bulkInsertImages(client: Client, d: BatchData): Promise<void> {
   );
 }
 
+async function bulkInsertOffers(client: Client, d: BatchData): Promise<void> {
+  if (d.offerIds.length === 0) return;
+  await client.query(
+    `INSERT INTO seller_offers (id, "productId", "sellerId", price, "originalPrice", stock, status, "updatedAt")
+     SELECT
+       unnest($1::uuid[]),
+       unnest($2::uuid[]),
+       unnest($3::uuid[]),
+       unnest($4::numeric[]),
+       unnest($5::numeric[]),
+       unnest($6::int[]),
+       'active'::"OfferStatus",
+       NOW()
+     ON CONFLICT ("productId", "sellerId") DO NOTHING`,
+    [
+      d.offerIds, d.offerProductIds, d.offerSellerIds,
+      d.offerPrices, d.offerOriginalPrices, d.offerStocks,
+    ],
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -275,6 +359,7 @@ async function main(): Promise<void> {
 
   try {
     await seedCategories(client);
+    await seedSellers(client);
 
     const batches = Math.ceil(TOTAL_PRODUCTS / BATCH_SIZE);
     console.log(
@@ -291,6 +376,7 @@ async function main(): Promise<void> {
       await bulkInsertProducts(client, data);
       await bulkInsertAttributes(client, data);
       await bulkInsertImages(client, data);
+      await bulkInsertOffers(client, data);
 
       inserted += batchCount;
       const elapsed = (Date.now() - startTime) / 1000;
