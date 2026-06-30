@@ -79,7 +79,7 @@ Each service restarts automatically on file changes.
 | Catalog Service | 3002 | `apps/catalog-service` ✅ Step 3.1 |
 | Pricing Service | 3003 | `apps/pricing-service` ✅ Step 3.2 |
 | Autocomplete Service | 3004 | `apps/autocomplete-service` ✅ Step 3.4 |
-| Saved Search Service | 3005 | `apps/saved-search-service` |
+| Saved Search Service | 3005 | `apps/saved-search-service` ✅ Step 3.5 |
 
 Infrastructure:
 
@@ -724,6 +724,102 @@ curl http://localhost:3004/health | jq '{store}'
 
 > **Note:** Product suggestions from Elasticsearch require the products index to be populated first.
 > Run `pnpm --filter @shop/search-service es:index:dev` (Step 3.3) before starting the autocomplete service.
+
+---
+
+## Saved Search Service (Step 3.5 — PostgreSQL)
+
+The saved search service runs on **port 3005** and persists user search/filter
+combinations so they can be re-opened or shared via a state-restoring URL.
+
+It is backed by **PostgreSQL** (via the `pg` driver) when `DATABASE_URL` is
+configured. When the variable is absent it transparently falls back to an
+in-memory store — this keeps local dev and unit tests working without a running
+database (mirrors the search service's ES/mock fallback).
+
+> **Auth is out of scope (Step 3.5).** User identity is taken from an
+> `x-user-id` request header stub. When the header is missing the service uses
+> the `anonymous` user. All operations are scoped to the resolved user.
+
+### PostgreSQL schema
+
+Table created by [migrations/001_init_saved_searches.sql](apps/saved-search-service/migrations/001_init_saved_searches.sql):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `UUID` | Primary key (generated in app via `crypto.randomUUID`) |
+| `user_id` | `VARCHAR(200)` | Indexed — from `x-user-id` header |
+| `name` | `VARCHAR(200)` | User-given label |
+| `url_state` | `TEXT` | The saved search query string (e.g. `q=laptop&brands=apple`) |
+| `search_state` | `JSONB` | Structured `SearchState` parsed from `url_state` |
+| `created_at` | `TIMESTAMPTZ` | Defaults to `now()`, indexed `DESC` |
+| `updated_at` | `TIMESTAMPTZ` | Defaults to `now()` |
+
+The table is also created idempotently on service startup, so a separate
+migration step is optional in local dev.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | _(not set)_ | PostgreSQL connection string. When absent the service uses the in-memory store. |
+| `PORT` | `3005` | Service listen port |
+| `CORS_ORIGIN` | `true` (reflect origin) | Allowed CORS origin(s) |
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check (includes active `store` mode) |
+| `GET` | `/api/v1/saved-searches` | List the current user's saved searches |
+| `GET` | `/api/v1/saved-searches/:id` | Get a saved search + its shareable `redirectUrl` |
+| `POST` | `/api/v1/saved-searches` | Save the current search/filter URL state |
+| `DELETE` | `/api/v1/saved-searches/:id` | Delete a saved search |
+
+Every response item includes a `redirectUrl` (e.g. `/search?q=laptop&brands=apple`)
+that the frontend can navigate to in order to restore the exact saved view.
+
+### Apply the migration
+
+```bash
+# Idempotent — safe to re-run
+DATABASE_URL=postgresql://shop:shop_secret@localhost:5432/shop_catalog \
+  pnpm --filter @shop/saved-search-service db:migrate
+```
+
+### Health endpoint
+
+```bash
+curl http://localhost:3005/health | jq '{store}'
+# → { "store": "postgres" }   # when DATABASE_URL is set
+# → { "store": "memory" }     # fallback
+```
+
+### Swagger UI
+
+Browse the interactive API docs at **http://localhost:3005/docs** while the service is running.
+
+### Quick test
+
+```bash
+# Start the service (in-memory mode — no DATABASE_URL needed)
+pnpm --filter @shop/saved-search-service dev
+
+# Save a search/filter combination
+curl -X POST http://localhost:3005/api/v1/saved-searches \
+  -H 'Content-Type: application/json' \
+  -H 'x-user-id: user-1' \
+  -d '{"name":"Cheap laptops","urlState":"q=laptop&brands=apple,dell&price_min=500&price_max=2000&sort=price_asc"}' | jq '{id,redirectUrl}'
+
+# List saved searches for the user
+curl http://localhost:3005/api/v1/saved-searches -H 'x-user-id: user-1' | jq '.count'
+
+# Fetch one and get its shareable redirect URL
+curl http://localhost:3005/api/v1/saved-searches/<id> -H 'x-user-id: user-1' | jq '.redirectUrl'
+
+# Delete a saved search
+curl -X DELETE http://localhost:3005/api/v1/saved-searches/<id> -H 'x-user-id: user-1' -i
+```
 
 ---
 

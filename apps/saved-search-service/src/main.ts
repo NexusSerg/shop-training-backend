@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
+import { setupSwagger } from './swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -16,6 +17,8 @@ async function bootstrap() {
     origin: process.env['CORS_ORIGIN'] ?? true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
+
+  setupSwagger(app);
 
   const port = parseInt(process.env['PORT'] ?? '3005', 10);
   await app.listen(port, '0.0.0.0');
