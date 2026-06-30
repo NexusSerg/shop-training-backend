@@ -782,3 +782,89 @@ const filtered = await client.search({
 ```
 
 The API Gateway at `http://localhost:3000` is the single entry point — the frontend only ever talks to that one host.
+
+---
+
+## Event Streaming — Kafka Setup & Topics (Step 4.1)
+
+The catalog is event-driven: services emit domain events to **Apache Kafka**, and the
+`indexing-worker` consumes them to keep Elasticsearch in sync (wired fully in Step 4.3).
+Step 4.1 establishes the Kafka foundation — **topics, message schemas, and manual
+publish/consume tooling**.
+
+### Topics
+
+| Topic | Partitions | Replication | Purpose |
+|-------|-----------|-------------|---------|
+| `product.created` | 10 | 1 | New product added |
+| `product.updated` | 10 | 1 | Product fields changed |
+| `product.deleted` | 3 | 1 | Product removed |
+| `price.changed` | 10 | 1 | Seller price changed |
+| `inventory.updated` | 10 | 1 | Stock level changed |
+
+High-volume topics use 10 partitions so the Step 4.3 consumer group can scale to 10+
+consumers. Replication factor is 1 for the single-broker local dev cluster.
+
+### Message schemas (schema registry)
+
+Every event has a **JSON Schema (draft-07)** registered in `@shop/shared-types`
+([packages/shared-types/src/event-schemas.ts](packages/shared-types/src/event-schemas.ts)).
+The `EVENT_SCHEMAS` map keys each topic to its schema, and `getEventSchema(topic)` looks
+one up. Producers validate before publishing and consumers validate before processing, so
+malformed messages are rejected at the edge.
+
+Every event shares a common envelope:
+
+```jsonc
+{
+  "eventId": "uuid",
+  "occurredAt": "2026-07-01T00:00:00.000Z",  // ISO-8601
+  "version": "1.0",
+  "type": "product.updated",                  // doubles as the topic name
+  "payload": { "productId": "p-123", /* … */ }
+}
+```
+
+Validation is performed with **Ajv** in the indexing-worker
+([apps/indexing-worker/src/kafka/event-validator.ts](apps/indexing-worker/src/kafka/event-validator.ts)).
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KAFKA_BROKERS` | `localhost:9092` | Comma-separated broker list |
+
+### Manual scripts
+
+```bash
+# Start the broker
+docker compose -f infra/docker-compose.yml up -d zookeeper kafka
+
+# 1. Create all topics (idempotent)
+KAFKA_BROKERS=localhost:9092 pnpm --filter @shop/indexing-worker kafka:create-topics
+
+# 2. Consume — run in one terminal, prints every validated event (Ctrl+C to stop)
+KAFKA_BROKERS=localhost:9092 pnpm --filter @shop/indexing-worker kafka:consume
+
+# 3. Produce — in another terminal, publish a sample event to a topic
+#    Usage: kafka:produce [topic] [productId]
+KAFKA_BROKERS=localhost:9092 pnpm --filter @shop/indexing-worker kafka:produce product.updated p-demo-001
+KAFKA_BROKERS=localhost:9092 pnpm --filter @shop/indexing-worker kafka:produce price.changed p-demo-001
+```
+
+The consumer prints a line per validated event, e.g.:
+
+```
+[consume-events] ✓ product.updated eventId=583d8a19-… productId=p-demo-001
+```
+
+### Tests
+
+Broker-independent unit tests cover schema validation (valid + invalid cases per topic)
+and topic configuration:
+
+```bash
+pnpm --filter @shop/indexing-worker test
+# ✓ src/__tests__/topics.test.ts (4 tests)
+# ✓ src/__tests__/event-validator.test.ts (9 tests)
+```
