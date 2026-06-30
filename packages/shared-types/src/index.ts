@@ -3,4 +3,5 @@ export * from './search.js';
 export * from './filter.js';
 export * from './pricing.js';
 export * from './events.js';
+export * from './event-schemas.js';
 export * from './saved-search.js';

@@ -9,11 +9,17 @@
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "kafka:create-topics": "ts-node src/scripts/create-topics.ts",
+    "kafka:produce": "ts-node src/scripts/produce-event.ts",
+    "kafka:consume": "ts-node src/scripts/consume-events.ts"
   },
   "dependencies": {
     "@shop/shared-types": "workspace:*",
     "@shop/shared-utils": "workspace:*",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "kafkajs": "^2.2.4",
     "pino": "^9.0.0"
   },
   "devDependencies": {
